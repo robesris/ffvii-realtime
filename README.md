@@ -60,6 +60,7 @@ ffvii-realtime gui
 - `--game rebirth|remake|revelation` — which game's HUD to detect (default `rebirth`).
 - `--range MM:SS-MM:SS` — process only that section of the video; also speeds up detection since only that span is scanned.
 - `--tac-vol` — volume of the sped-up Tactical-Mode audio, as a percentage (`10%`, `0%` for silent, `100%` for full) or a 0–1 fraction. Default `10%`.
+- `--lead` — start the speed-up this many seconds *before* the menu is detected, to cover the panel slide-in. Default `0.2`.
 
 ### The speed-up factor
 

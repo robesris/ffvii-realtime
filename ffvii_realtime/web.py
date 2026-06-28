@@ -11,8 +11,8 @@ import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
-from . import detect as _detect
-from . import render as _render
+from .detect import detect, LEAD
+from .render import render
 from .ffmpeg_util import probe
 
 STATE = {"running": False, "stage": "idle", "message": "", "pct": 0,
@@ -38,7 +38,7 @@ def _secs(s):
     return float(s)
 
 
-def _job(path, factor, tac_vol, out, start=0.0, duration=None):
+def _job(path, factor, tac_vol, out, start=0.0, duration=None, lead=LEAD):
     try:
         _set(running=True, done=False, error=None, output=None, stage="detect",
              message="Scanning for Tactical Mode segments...", pct=2)
@@ -50,7 +50,7 @@ def _job(path, factor, tac_vol, out, start=0.0, duration=None):
             _set(stage="detect", message=f"Scanning ({stage}) {n:,} frames...",
                  pct=2 + int(28 * min(1.0, n / total_frames)))
 
-        res = _detect.detect(path, start=start, duration=duration, progress=dprog)
+        res = detect(path, start=start, duration=duration, lead=lead, progress=dprog)
         _set(stage="render", pct=32,
              message=f"Found {res['n_segments']} slow-mo segments. Rendering...")
 
@@ -61,7 +61,7 @@ def _job(path, factor, tac_vol, out, start=0.0, duration=None):
         window = None
         if start or duration:
             window = (start, start + duration if duration else info["duration"])
-        _render.render(path, res["intervals"], out, factor=factor, tac_vol=tac_vol,
+        render(path, res["intervals"], out, factor=factor, tac_vol=tac_vol,
                        window=window, progress=rprog)
         _set(running=False, done=True, stage="done", pct=100, output=out,
              message=f"Done! {res['n_segments']} segments sped up. Saved to {out}")
@@ -94,6 +94,8 @@ a.dl{display:inline-block;margin-top:14px}
     <div class="note">100 = default in-game slowdown. Higher if your "Tactical Mode Slowdown" setting is stronger.</div></div>
   <div><label>Tactical audio volume</label><input id="vol" type="text" value="10%">
     <div class="note">Percentage of normal volume for sped-up segments: 0% = silent, 100% = full.</div></div>
+  <div><label>Lead-in (seconds)</label><input id="lead" type="number" value="0.2" min="0" step="0.05">
+    <div class="note">Start the speed-up this many seconds before the menu is detected, to cover the panel slide-in.</div></div>
 </div>
 <div class="row">
   <div><label>Start (optional)</label><input id="start" placeholder="0:00">
@@ -120,6 +122,7 @@ async function run(){
   await fetch('/api/run',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({path,factor:+document.getElementById('factor').value,
       tac_vol:pct/100,
+      lead:+document.getElementById('lead').value,
       start:document.getElementById('start').value.trim(),
       end:document.getElementById('end').value.trim(),
       out:document.getElementById('out').value.trim()})});
@@ -184,7 +187,8 @@ class Handler(BaseHTTPRequestHandler):
             if duration is not None and duration <= 0:
                 self._send(400, json.dumps({"error": "end must be after start"})); return
             t = threading.Thread(target=_job, args=(path, float(req.get("factor", 100)),
-                                                     float(req.get("tac_vol", 0.1)), out, start, duration),
+                                                     float(req.get("tac_vol", 0.1)), out, start, duration,
+                                                     float(req.get("lead", LEAD))),
                                  daemon=True)
             t.start()
             self._send(200, json.dumps({"ok": True}))
