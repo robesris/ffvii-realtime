@@ -14,6 +14,17 @@ keywords = ["ffvii", "final-fantasy", "video", "ffmpeg", "opencv", "slow-motion"
 dependencies = [
     "numpy>=1.21",
     "opencv-python-headless>=4.5",
+    "imageio-ffmpeg>=0.4.9",
+]
+
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Topic :: Multimedia :: Video :: Conversion",
 ]
 
 [project.urls]
