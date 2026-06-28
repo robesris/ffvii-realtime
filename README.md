@@ -17,22 +17,56 @@ Detection normalizes any 16:9 resolution to 1080p internally, so the bundled tem
 
 ---
 
-## Quick start (no terminal needed)
+## Install
 
-1. Install **Python 3** from [python.org](https://www.python.org/downloads/) (double-click the installer; on Windows, check *"Add python.exe to PATH"*).
+**Recommended — one line, everything bundled:**
+
+```bash
+pipx install ffvii-realtime     # installs the `ffvii-realtime` command, isolated
+ffvii-realtime gui              # opens the browser app
+```
+
+That's the whole setup: **FFmpeg ships with it** (nothing else to install), and this
+path sidesteps both the macOS "unidentified developer" warning and the corporate
+download filters that can flag the zip below. Paste your video's path into the app,
+set the speed-up factor, click **Start** — the finished file is saved next to the original.
+
+Requires **Python 3.8+**. No `pipx`? [Install it](https://pipx.pypa.io/stable/installation/),
+or just use `pip install ffvii-realtime` (pipx only adds isolation). On Windows, check
+*"Add python.exe to PATH"* when installing Python.
+
+Prefer the command line? After installing, the one-shot is:
+
+```bash
+ffvii-realtime fix my-fight.mp4 -o my-fight.realtime.mp4
+```
+
+See [Command-line usage](#command-line-usage) for previews, ranges, and other games.
+
+### Alternative: double-click launcher (no terminal at all)
+
+If you'd rather not touch a terminal, use the bundled launcher:
+
+1. Install **Python 3** from [python.org](https://www.python.org/downloads/).
 2. [Download this project](https://github.com/robesris/ffvii-realtime/archive/refs/heads/main.zip) and unzip it.
-3. Double-click **`Run on Mac.command`** (macOS) or **`Run on Windows.bat`** (Windows).
-   - The first run sets up a private environment and downloads FFmpeg automatically (one-time). Keep the window that opens.
-   - Your browser opens the app. Paste the **full path** to your video, set the speed-up factor, and click **Start**. The finished file is saved next to your original.
+3. Double-click **`Run on Mac.command`** (macOS) or **`Run on Windows.bat`** (Windows). The first run sets up a private environment and downloads FFmpeg (one-time), then your browser opens the app.
 
-> macOS may warn that the `.command` is from an unidentified developer the first time — right-click it → **Open** to allow it. The launcher is plain text; you can read exactly what it does.
+> **macOS blocks the launcher the first time** — it's downloaded from the internet and isn't signed by an Apple-registered developer. This is expected; the launcher is plain text you can read. To allow it:
+>
+> 1. Double-click **`Run on Mac.command`**. macOS shows *"Apple could not verify…"* — click **Done** (do **not** click *Move to Trash*).
+> 2. Open  → **System Settings → Privacy & Security**, scroll down to the **Security** section. You'll see *"'Run on Mac.command' was blocked to protect your Mac"* with an **Open Anyway** button — click it and authenticate.
+> 3. One more confirmation dialog appears — click **Open Anyway**. macOS remembers the choice, so future runs launch normally.
+>
+> *(On macOS 15 Sequoia and later you must use System Settings as above — the older right-click → **Open** shortcut no longer works for `.command` files. The `pipx` install above avoids this entirely.)*
+
+> **If your browser or antivirus blocks the download:** some managed/corporate browsers (e.g. Island) and endpoint-security tools quarantine `.zip` archives that contain executable launcher scripts and may delete the download outright. Just use **`pipx install ffvii-realtime`** above instead — it needs no zip and no scripts, so there's nothing for those filters to flag.
 
 ---
 
 ## Command-line usage
 
 ```bash
-pip install -e .
+# already installed via `pipx install ffvii-realtime` (contributors: `pip install -e .`)
 
 # the usual one-shot: detect slow-mo and render the real-time version
 ffvii-realtime fix my-fight.mp4 -o my-fight.realtime.mp4
@@ -83,8 +117,7 @@ ffvii-realtime gui
 ## Requirements
 
 - Python 3.8+
-- FFmpeg (auto-downloaded by the launchers; or install yourself and put it on PATH)
-- `numpy`, `opencv-python-headless` (installed automatically)
+- Everything else is installed automatically: `numpy`, `opencv-python-headless`, and FFmpeg (bundled via `imageio-ffmpeg`). If you already have your own FFmpeg on PATH — or set `$FFVII_FFMPEG` / `$FFVII_FFPROBE` — it's used in preference to the bundled build.
 
 ## License
 
