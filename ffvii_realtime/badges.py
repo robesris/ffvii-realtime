@@ -68,7 +68,8 @@ class Profile:
 
     def __init__(self, name, band, l2_sub, r2_sub, tpl_subdir,
                  white_thr=200, black_thr=50, use_black=True, guard=False, nr2_sub=None,
-                 thresh=0.48, l2_frozen=0.55, frozen_mode="l2"):
+                 thresh=0.48, l2_frozen=0.55, frozen_mode="l2",
+                 bridge_gap=0.0, bridge_motion=2.0):
         self.name = name
         self.BAND = band              # (x, y, w, h) of the band decoded in pass 1
         self.L2_SUB = l2_sub          # L2 search window within the band
@@ -82,6 +83,13 @@ class Profile:
         self.thresh = thresh          # strong-match threshold for both badges
         self.l2_frozen = l2_frozen    # badge threshold for the "frozen" rescue clause
         self.frozen_mode = frozen_mode  # 'l2' (L only), 'both' (L and R), or 'off'
+        # Frozen-gap bridge: if a near-frozen (slow-mo) gap up to `bridge_gap` seconds
+        # sits between two detected Tactical segments, fill it. Rescues stretches where
+        # the badges are momentarily unreadable (e.g. a white-flash whiteout) but the
+        # menu is clearly still open (slow-mo, badges seen just before and after).
+        # 0 disables. Off by default; on for games that need it.
+        self.bridge_gap = bridge_gap
+        self.bridge_motion = bridge_motion
         self.l2_col = [_load(tpl_subdir, "l2_a.png"), _load(tpl_subdir, "l2_b.png")]
         self.r2_col = [_load(tpl_subdir, "r2_a.png"), _load(tpl_subdir, "r2_b.png")]
         self.l2_wht = [white_mask(t, white_thr) for t in self.l2_col]
@@ -144,6 +152,9 @@ REMAKE = Profile(
     tpl_subdir="remake",
     white_thr=180, use_black=False, guard=True,
     nr2_sub=None,
+    # White-flash effects can wash the badges out completely mid-menu; bridge
+    # near-frozen gaps (up to 12s) between detected segments to cover them.
+    bridge_gap=12.0, bridge_motion=2.0,
 )
 
 # Revelation: Rebirth-like layout (left badge far-left, right badge far-right) but

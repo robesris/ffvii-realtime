@@ -59,6 +59,27 @@ def _intervals(flags, fps, merge_gap, min_dur, lead, t0=0.0):
     return [(round(a, 3), round(b, 3)) for a, b in out]
 
 
+def _bridge_frozen_gaps(ivs, ms, fps, start, max_gap, motion_thr):
+    """Fill near-frozen gaps between consecutive detected segments. A slow-motion
+    gap bracketed by Tactical on both sides is almost certainly the same menu with
+    the badges momentarily unreadable (e.g. a white-flash whiteout); real-time
+    action is never frozen for that long."""
+    if not ivs or max_gap <= 0:
+        return ivs
+    ms = np.asarray(ms, np.float32)
+    out = [list(ivs[0])]
+    for a, b in ivs[1:]:
+        ga, gb = out[-1][1], a
+        i0 = max(0, int((ga - start) * fps))
+        i1 = min(len(ms), int((gb - start) * fps))
+        frozen = i1 > i0 and float(ms[i0:i1].mean()) < motion_thr
+        if 0 < (gb - ga) <= max_gap and frozen:
+            out[-1][1] = b
+        else:
+            out.append([a, b])
+    return [(round(a, 3), round(b, 3)) for a, b in out]
+
+
 def detect(video, game="rebirth", thresh=None, l2_frozen=None, motion=MOTION,
            slow_cap=SLOW_CAP, nr2=NR2, merge_gap=MERGE_GAP, min_dur=MIN_DUR, lead=LEAD,
            start=0.0, duration=None, progress=None):
@@ -152,6 +173,8 @@ def detect(video, game="rebirth", thresh=None, l2_frozen=None, motion=MOTION,
         flags.append((strong or frozen) and not normal_menu)
 
     ivs = _intervals(flags, fps, merge_gap, min_dur, lead, t0=start)
+    if profile.bridge_gap > 0:
+        ivs = _bridge_frozen_gaps(ivs, ms, fps, start, profile.bridge_gap, profile.bridge_motion)
     total = sum(b - a for a, b in ivs)
     return {
         "video": video, "game": game, "fps": fps,
