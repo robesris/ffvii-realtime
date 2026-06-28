@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+
+# tool outputs / work files
+*.realtime.mp4
+*.preview.mp4
+*.intervals.json
+chunks/
+filtergraph*.txt
+
+# bundled ffmpeg fetched by the launcher
+bin/
+
+# OS
+.DS_Store

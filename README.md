@@ -1,0 +1,96 @@
+# FFVII Realtime
+
+**Remove Tactical Mode slow-motion from Final Fantasy VII Rebirth combat captures so the whole fight plays at uniform real-time speed.**
+
+In Rebirth, opening the Tactical Mode command menu drops the game into heavy slow-motion while you pick your actions. It's great to play, but it makes a *recording* drag — the footage constantly stutters between real-time action and long slow-motion stretches. FFVII Realtime automatically finds those slow-motion segments and speeds only them back up, leaving the rest of the fight untouched, so the whole thing flows at one natural pace.
+
+> Example: a 1:55:00 capture became ~1:07:00 of continuous, full-speed combat — ~700 Tactical Mode segments detected and sped up, fully audio-synced.
+
+---
+
+## How it works (short version)
+
+1. **Detect** — a computer-vision pass (OpenCV) scans every frame and recognizes Tactical Mode by the on-screen **L2/R2 button prompts** at their fixed positions, made robust to bright/gray/busy backgrounds by combining color + white-mask + black-mask matching. A **motion check** confirms the scene is actually in slow-motion (so a stray badge match during fast action can't trigger a false speed-up).
+2. **Render** — FFmpeg re-times each detected segment (`setpts` for video, `atempo` for audio, kept exactly in sync), speeding up the slow-motion while normal-speed combat passes through untouched, then stitches it all back together.
+
+Detection normalizes any 16:9 resolution to 1080p internally, so the bundled templates work at 1080p / 1440p / 4K. Rendering happens at your source's native resolution.
+
+---
+
+## Quick start (no terminal needed)
+
+1. Install **Python 3** from [python.org](https://www.python.org/downloads/) (double-click the installer; on Windows, check *"Add python.exe to PATH"*).
+2. [Download this project](https://github.com/robesris/ffvii-realtime/archive/refs/heads/main.zip) and unzip it.
+3. Double-click **`Run on Mac.command`** (macOS) or **`Run on Windows.bat`** (Windows).
+   - The first run sets up a private environment and downloads FFmpeg automatically (one-time). Keep the window that opens.
+   - Your browser opens the app. Paste the **full path** to your video, set the speed-up factor, and click **Start**. The finished file is saved next to your original.
+
+> macOS may warn that the `.command` is from an unidentified developer the first time — right-click it → **Open** to allow it. The launcher is plain text; you can read exactly what it does.
+
+---
+
+## Command-line usage
+
+```bash
+pip install -e .
+
+# the usual one-shot: detect slow-mo and render the real-time version
+ffvii-realtime fix my-fight.mp4 -o my-fight.realtime.mp4
+
+# verify settings on a short window first (recommended)
+ffvii-realtime preview my-fight.mp4 --range 4:40-5:20 -o test.mp4
+
+# process only a section of the video (also makes detection faster),
+# and mute the sped-up slow-mo audio
+ffvii-realtime fix my-fight.mp4 --range 24:00-26:30 --tac-vol 0%
+
+# pick the game (default rebirth)
+ffvii-realtime fix my-remake-fight.mp4 --game remake
+
+# separate steps
+ffvii-realtime detect my-fight.mp4 -o intervals.json
+ffvii-realtime render my-fight.mp4 -i intervals.json -o out.mp4
+
+# launch the browser UI
+ffvii-realtime gui
+```
+
+### Options
+
+- `--game rebirth|remake|revelation` — which game's HUD to detect (default `rebirth`).
+- `--range MM:SS-MM:SS` — process only that section of the video; also speeds up detection since only that span is scanned.
+- `--tac-vol` — volume of the sped-up Tactical-Mode audio, as a percentage (`10%`, `0%` for silent, `100%` for full) or a 0–1 fraction. Default `10%`.
+
+### The speed-up factor
+
+`--factor` defaults to **100**, which matches the game's **default** "Tactical Mode Slowdown" setting. If you changed that setting, your slow-motion is faster or slower, so pick a different factor. The easiest way to dial it in: run `preview` on a stretch with a long Tactical Mode and try a couple of values — when the sped-up sections look like normal-speed combat, that's your number. (Higher = snappier; the slow-mo in Rebirth is aggressive, so values in the 50–150 range are typical.)
+
+---
+
+## Caveats
+
+- **Tested on one capture so far** (1080p, PS5, default HUD). The detection keys on the game's own UI, so it should transfer to any Rebirth footage — but please run `preview` on your own video before committing to a full render.
+- **16:9 only.** Ultrawide/non-16:9 captures will warn and may misdetect (the HUD anchors differently).
+- **Custom HUD settings** (scale/opacity accessibility options) could shift the badge positions and break detection. Standard HUD is assumed.
+- **Pauses / loading / results screens** are static (never slow-motion), so they're correctly left alone — they'll appear at full length in the output.
+- A real character movement that happens *during* a slow-motion stretch becomes near-instantaneous when compressed — occasionally a character may appear to "jump." That's inherent to compressing slow-motion that contains motion, not a glitch.
+
+---
+
+## Requirements
+
+- Python 3.8+
+- FFmpeg (auto-downloaded by the launchers; or install yourself and put it on PATH)
+- `numpy`, `opencv-python-headless` (installed automatically)
+
+## License
+
+ffvii-realtime is **dual-licensed** (see [LICENSING.md](LICENSING.md)):
+
+- **GNU AGPL-3.0** for open-source use (see [LICENSE](LICENSE)) — free to use and
+  modify, but if you distribute it or run a modified version as a network service,
+  your version must also be released under the AGPL (source available).
+- **Commercial license** for proprietary/commercial use without the AGPL's
+  copyleft obligations — contact Rob Esris (open an issue on this repo).
+
+Copyright © 2026 Rob Esris.

@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ffvii-realtime"
+version = "0.1.0"
+description = "Remove Tactical Mode slow-motion from Final Fantasy VII Rebirth combat captures so the whole fight plays at uniform real-time speed."
+readme = "README.md"
+requires-python = ">=3.8"
+license = { text = "AGPL-3.0-or-later" }
+authors = [{ name = "Rob Esris" }]
+keywords = ["ffvii", "final-fantasy", "video", "ffmpeg", "opencv", "slow-motion"]
+dependencies = [
+    "numpy>=1.21",
+    "opencv-python-headless>=4.5",
+]
+
+[project.urls]
+Homepage = "https://github.com/robesris/ffvii-realtime"
+Issues = "https://github.com/robesris/ffvii-realtime/issues"
+
+[project.scripts]
+ffvii-realtime = "ffvii_realtime.cli:main"
+
+[tool.setuptools]
+packages = ["ffvii_realtime"]
+
+[tool.setuptools.package-data]
+ffvii_realtime = ["templates/*.png", "templates/*/*.png"]
