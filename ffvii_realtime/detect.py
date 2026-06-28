@@ -163,6 +163,9 @@ def detect(video, game="rebirth", thresh=None, l2_frozen=None, motion=MOTION,
     flags = []
     for i in range(idx):
         strong = r2s[i] > thresh and l2s[i] > thresh and ms[i] < slow_cap
+        # both badges match strongly -> Tactical regardless of motion (rescues
+        # summon/flash frames where bright effects inflate the motion proxy)
+        confident = l2s[i] > profile.conf_l2 and r2s[i] > profile.conf_r2
         if profile.frozen_mode == "both":
             frozen = l2s[i] > l2_frozen and r2s[i] > l2_frozen and ms[i] < motion
         elif profile.frozen_mode == "off":
@@ -170,7 +173,7 @@ def detect(video, game="rebirth", thresh=None, l2_frozen=None, motion=MOTION,
         else:  # 'l2': menu up (L present) and scene frozen
             frozen = l2s[i] > l2_frozen and ms[i] < motion
         normal_menu = nr2s[i] > nr2   # R2 at the normal-menu position -> not Tactical
-        flags.append((strong or frozen) and not normal_menu)
+        flags.append((strong or confident or frozen) and not normal_menu)
 
     ivs = _intervals(flags, fps, merge_gap, min_dur, lead, t0=start)
     if profile.bridge_gap > 0:

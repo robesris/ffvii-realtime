@@ -69,7 +69,7 @@ class Profile:
     def __init__(self, name, band, l2_sub, r2_sub, tpl_subdir,
                  white_thr=200, black_thr=50, use_black=True, guard=False, nr2_sub=None,
                  thresh=0.48, l2_frozen=0.55, frozen_mode="l2",
-                 bridge_gap=0.0, bridge_motion=2.0):
+                 conf_l2=0.90, conf_r2=0.60, bridge_gap=0.0, bridge_motion=2.0):
         self.name = name
         self.BAND = band              # (x, y, w, h) of the band decoded in pass 1
         self.L2_SUB = l2_sub          # L2 search window within the band
@@ -83,6 +83,12 @@ class Profile:
         self.thresh = thresh          # strong-match threshold for both badges
         self.l2_frozen = l2_frozen    # badge threshold for the "frozen" rescue clause
         self.frozen_mode = frozen_mode  # 'l2' (L only), 'both' (L and R), or 'off'
+        # High-confidence override: if BOTH badges match this strongly, it's Tactical
+        # even if motion is high (the slow_cap motion gate is meant to reject *fluke*
+        # badge matches during fast action, not crisp ~1.0 matches during a bright,
+        # particle-heavy summon). A fluke never lands both badges this high.
+        self.conf_l2 = conf_l2
+        self.conf_r2 = conf_r2
         # Frozen-gap bridge: if a near-frozen (slow-mo) gap up to `bridge_gap` seconds
         # sits between two detected Tactical segments, fill it. Rescues stretches where
         # the badges are momentarily unreadable (e.g. a white-flash whiteout) but the
