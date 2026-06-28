@@ -63,7 +63,9 @@ ffvii-realtime gui
 
 ### The speed-up factor
 
-`--factor` defaults to **100**, which matches the game's **default** "Tactical Mode Slowdown" setting. If you changed that setting, your slow-motion is faster or slower, so pick a different factor. The easiest way to dial it in: run `preview` on a stretch with a long Tactical Mode and try a couple of values — when the sped-up sections look like normal-speed combat, that's your number. (Higher = snappier; the slow-mo in Rebirth is aggressive, so values in the 50–150 range are typical.)
+`--factor` defaults to **100**, which matches the game's **default** "Tactical Mode Slowdown" setting. If you changed that setting, your slow-motion is faster or slower, so pick a different factor. The easiest way to dial it in: run `preview` on a stretch with a long Tactical Mode and try a couple of values — when the sped-up sections look like normal-speed combat, that's your number. (Higher = snappier; the slow-mo is aggressive, so values in the 50–150 range are typical.)
+
+> **Note:** the default of **100×** was arrived at by trial and error — rendering a tactical segment at several factors and picking the one that looks like real-time. It is *not* an officially documented figure, and the actual slowdown almost certainly differs per game and per in-game "Tactical Mode Slowdown" setting. If you know (or have measured) the real slowdown factors for any of the selectable Tactical Mode speed settings in any of these games, please open an issue — that input is very welcome and would let the tool ship accurate per-setting defaults.
 
 ---
 
