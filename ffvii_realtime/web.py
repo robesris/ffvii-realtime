@@ -16,13 +16,19 @@ from .render import render
 from .ffmpeg_util import probe
 
 STATE = {"running": False, "stage": "idle", "message": "", "pct": 0,
-         "done": False, "output": None, "error": None}
+         "done": False, "output": None, "error": None, "log": []}
 _LOCK = threading.Lock()
 
 
 def _set(**kw):
     with _LOCK:
         STATE.update(kw)
+
+
+def _log(line):
+    with _LOCK:
+        STATE["log"].append(line)
+        del STATE["log"][:-300]   # keep the last 300 lines
 
 
 def _secs(s):
@@ -42,33 +48,46 @@ def _job(path, factor, tac_vol, out, start=0.0, duration=None, lead=LEAD, bridge
          game="rebirth"):
     try:
         _set(running=True, done=False, error=None, output=None, stage="detect",
-             message="Scanning for Tactical Mode segments...", pct=2)
+             message="Scanning for Tactical Mode segments...", pct=2, log=[])
+        _log(f"Detecting Tactical Mode segments ({game}) in {os.path.basename(path)} ...")
         info = probe(path)
         span = duration if duration else (info["duration"] - start)
         total_frames = max(1, int(span * info["fps"]))
 
+        seen = {"stage": None}
+
         def dprog(stage, n):
             _set(stage="detect", message=f"Scanning ({stage}) {n:,} frames...",
                  pct=2 + int(28 * min(1.0, n / total_frames)))
+            if stage != seen["stage"]:
+                seen["stage"] = stage
+                _log(f"Scanning ({stage}) ...")
 
         res = detect(path, game=game, start=start, duration=duration, lead=lead, progress=dprog)
         _set(stage="render", pct=32,
              message=f"Found {res['n_segments']} slow-mo segments. Rendering...")
+        _log(f"Found {res['n_segments']} slow-mo segments, "
+             f"{res['tactical_seconds']:.0f}s tactical.")
 
         def rprog(i, t, status):
             _set(stage="render", pct=32 + int(66 * i / max(1, t)),
                  message=f"Rendering chunk {i}/{t}...")
+            _log("Bridging audio across sped-up seams..." if status == "bridging audio"
+                 else f"Rendering chunk {i}/{t} ...")
 
         window = None
         if start or duration:
             window = (start, start + duration if duration else info["duration"])
+        _log(f"Rendering -> {out} (factor {factor}x) ...")
         render(path, res["intervals"], out, factor=factor, tac_vol=tac_vol,
                        window=window, progress=rprog, bridge_sound=bridge_sound)
         _set(running=False, done=True, stage="done", pct=100, output=out,
              message=f"Done! {res['n_segments']} segments sped up. Saved to {out}")
+        _log(f"Done -> {out}")
     except Exception as e:
         _set(running=False, done=False, error=str(e), stage="error",
              message=f"Error: {e}")
+        _log(f"Error: {e}")
 
 
 def _native_pick():
@@ -122,6 +141,7 @@ select{width:100%;padding:8px;border:1px solid #ccc;border-radius:6px;box-sizing
 .drop input{flex:1;width:auto}
 .browse{margin-top:0;padding:8px 14px;font-size:14px;background:#555;white-space:nowrap}
 .drop.drag{outline:2px dashed #2b6cb0;outline-offset:4px;border-radius:8px;background:#eef5ff}
+#log{margin-top:14px;background:#1e1e1e;color:#d4d4d4;font:12px/1.45 ui-monospace,Menlo,Consolas,monospace;padding:10px 12px;border-radius:6px;height:170px;overflow:auto;white-space:pre-wrap;display:none}
 a.dl{display:inline-block;margin-top:14px}
 </style></head><body>
 <h1>FFVII Realtime</h1>
@@ -134,11 +154,11 @@ a.dl{display:inline-block;margin-top:14px}
 <div class="note">Drag a video onto this box, click <b>Browse&hellip;</b>, or paste its full path. The file stays on your computer &mdash; it isn't uploaded.</div>
 <label>Game</label>
 <select id="game">
-  <option value="rebirth">Final Fantasy VII Rebirth</option>
   <option value="remake">Final Fantasy VII Remake</option>
+  <option value="rebirth" selected>Final Fantasy VII Rebirth</option>
   <option value="revelation">Final Fantasy VII Revelation</option>
 </select>
-<div class="note">Which game's HUD to detect &mdash; pick the one your footage is from. (Wrong game = 0 segments found.)</div>
+<div class="note">Which game's HUD to detect &mdash; <b>you must pick the one your footage is from</b>, or detection finds 0 segments. Defaults to Rebirth.</div>
 <div class="row">
   <div><label>Speed-up factor</label><input id="factor" type="number" value="100" min="2" step="1">
     <div class="note">100 = default in-game slowdown. Higher if your "Tactical Mode Slowdown" setting is stronger.</div></div>
@@ -162,6 +182,7 @@ a.dl{display:inline-block;margin-top:14px}
 <button id="go" onclick="run()">Start</button>
 <div id="bar"><div id="fill"></div></div>
 <div id="msg"></div>
+<pre id="log"></pre>
 <div id="result"></div>
 <script>
 let timer=null;
@@ -218,6 +239,10 @@ async function poll(){
   const s=await (await fetch('/api/status')).json();
   document.getElementById('fill').style.width=s.pct+'%';
   document.getElementById('msg').textContent=s.message;
+  if(s.log&&s.log.length){const L=document.getElementById('log');
+    const atBottom=L.scrollHeight-L.scrollTop-L.clientHeight<30;
+    L.style.display='block';L.textContent=s.log.join(String.fromCharCode(10));
+    if(atBottom)L.scrollTop=L.scrollHeight;}
   if(s.done||s.error){clearInterval(timer);document.getElementById('go').disabled=false;
     if(s.done)document.getElementById('result').innerHTML='<a class="dl" href="/api/open?path='+encodeURIComponent(s.output)+'">Reveal output file</a>';}
 }
