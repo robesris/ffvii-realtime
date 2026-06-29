@@ -99,7 +99,7 @@ ffvii-realtime gui
 
 ## Caveats
 
-- **Tested on one capture so far** (1080p, PS5, default HUD). The detection keys on the game's own UI, so it should transfer to any Rebirth footage — but please run `preview` on your own video before committing to a full render.
+- **Tested on one capture so far** (1080p, PS5, default HUD). The detection keys on the game's own UI, so it should work on any footage as long as the correct game (Remake, Rebirth, or Revelation) is specified — but please run `preview` on your own video before committing to a full render.
 - **16:9 only.** Ultrawide/non-16:9 captures will warn and may misdetect (the HUD anchors differently).
 - **Custom HUD settings** (scale/opacity accessibility options) could shift the badge positions and break detection. Standard HUD is assumed.
 - **Pauses / loading / results screens** are static (never slow-motion), so they're correctly left alone — they'll appear at full length in the output.
