@@ -2,7 +2,7 @@
 
 ffmpeg is resolved in this order:
   1. $FFVII_FFMPEG env var (explicit override)
-  2. a binary bundled under ~/.ffvii-realtime/bin (fetched by the double-click launcher)
+  2. a binary placed under ~/.ffvii-realtime/bin
   3. whatever is on PATH
   4. the static build shipped with the `imageio-ffmpeg` wheel (pip-installed, so a
      plain `pip install ffvii-realtime` is self-contained with no external binary)

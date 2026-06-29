@@ -14,7 +14,7 @@ venv/
 chunks/
 filtergraph*.txt
 
-# bundled ffmpeg fetched by the launcher
+# a manually placed local ffmpeg
 bin/
 
 # OS
