@@ -52,6 +52,8 @@ See [Command-line usage](#command-line-usage) for previews, ranges, and other ga
 
 ## Command-line usage
 
+> **Specify the game your footage is from.** Detection is HUD-specific and defaults to **Rebirth**. For Remake or Revelation captures you must pass `--game remake` or `--game revelation` (in the browser UI, choose it from the **Game** dropdown). The wrong game finds 0 segments.
+
 ```bash
 # already installed via `pipx install ffvii-realtime` (contributors: `pip install -e .`)
 
@@ -78,7 +80,7 @@ ffvii-realtime gui
 
 ### Options
 
-- `--game rebirth|remake|revelation` — which game's HUD to detect (default `rebirth`).
+- `--game rebirth|remake|revelation` — which game's HUD to detect. **Set this to match your footage** — detection is HUD-specific, so the wrong value finds 0 segments. Defaults to `rebirth`.
 - `--range MM:SS-MM:SS` — process only that section of the video; also speeds up detection since only that span is scanned.
 - `--tac-vol` — volume of the sped-up Tactical-Mode audio, as a percentage (`10%`, `0%` for silent, `100%` for full) or a 0–1 fraction. Default `10%`. (Ignored when seam bridging is on, since bridging replaces that audio.)
 - `--no-bridge-sound` — turn **off** seam audio bridging. By default, speeding up a Tactical segment would make its audio cut out and jump; bridging instead crossfades the real before/after ambient across the seam so the sound stays continuous. On by default. `--bridge-width` (seconds, default `0.35`) tunes the crossfade half-width.
