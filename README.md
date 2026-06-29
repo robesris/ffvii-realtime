@@ -36,7 +36,7 @@ fetches everything from PyPI rather than a downloaded executable. Paste your
 video's path into the app, set the speed-up factor, click **Start** — the finished
 file is saved next to the original.
 
-Requires **Python 3.8+**. No `pipx`? [Install it](https://pipx.pypa.io/stable/installation/),
+Requires **Python 3.8+**. No `pipx`? [Install it](https://pipx.pypa.io/stable/how-to/install-pipx/),
 or just use `pip install ffvii-realtime` (pipx only adds isolation). On Windows, check
 *"Add python.exe to PATH"* when installing Python.
 
