@@ -248,7 +248,15 @@ class Handler(BaseHTTPRequestHandler):
         elif u.path == "/api/open":
             p = parse_qs(u.query).get("path", [""])[0]
             if p and os.path.exists(p):
-                os.system(f'open -R "{p}"' if os.uname().sysname == "Darwin" else f'xdg-open "{os.path.dirname(p)}"')
+                import sys as _sys
+                import subprocess
+                if _sys.platform == "darwin":
+                    cmd = ["open", "-R", p]              # reveal in Finder
+                elif _sys.platform.startswith("win"):
+                    cmd = ["explorer", "/select,", p]
+                else:
+                    cmd = ["xdg-open", os.path.dirname(p)]
+                subprocess.run(cmd)                       # list args -> no shell, no escaping issues
                 self._send(200, json.dumps({"ok": True}))
             else:
                 self._send(404, json.dumps({"error": "not found"}))
