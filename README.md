@@ -30,9 +30,7 @@ pipx install ffvii-realtime     # installs the `ffvii-realtime` command, isolate
 ffvii-realtime gui              # opens the browser app
 ```
 
-That's the whole setup: **FFmpeg ships with it** — nothing else to install, and
-nothing for macOS Gatekeeper or corporate download filters to flag, since pip
-fetches everything from PyPI rather than a downloaded executable. Paste your
+That's the whole setup: **FFmpeg ships with it** — nothing else to install. Paste your
 video's path into the app, set the speed-up factor, click **Start** — the finished
 file is saved next to the original.
 
