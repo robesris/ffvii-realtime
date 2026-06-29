@@ -86,6 +86,12 @@ def _add_render_opts(p):
     p.add_argument("--crf", type=int, default=18, help="x264 quality (lower=better, 18=near-lossless)")
     p.add_argument("--preset", default="slow",
                    help="x264 speed/efficiency preset (slower = smaller file; default slow)")
+    p.add_argument("--no-bridge-sound", dest="bridge_sound", action="store_false",
+                   help="keep the raw sped-up audio at each Tactical seam instead of "
+                        "crossfading the real before/after ambient across it (bridging is on "
+                        "by default, so the sound never cuts out)")
+    p.add_argument("--bridge-width", type=float, default=0.35,
+                   help="seam crossfade half-width in seconds (total crossfade = 2x this)")
 
 
 def _progress_detect(stage, n):
@@ -169,7 +175,8 @@ def main(argv=None):
         print(f"Rendering -> {out} (factor {args.factor}x) ...", file=sys.stderr)
         render(args.input, res["intervals"], out, factor=args.factor,
                        tac_vol=args.tac_vol, crf=args.crf, preset=args.preset,
-                       window=window, progress=_progress_render)
+                       window=window, progress=_progress_render,
+                       bridge_sound=args.bridge_sound, bridge_width=args.bridge_width)
         print(f"Done -> {out}")
 
     elif args.cmd == "render":
@@ -178,7 +185,8 @@ def main(argv=None):
         _, _, window = _range_args(args)
         out = args.out or os.path.splitext(args.input)[0] + ".realtime.mp4"
         render(args.input, ivs, out, factor=args.factor, tac_vol=args.tac_vol,
-                       crf=args.crf, preset=args.preset, window=window, progress=_progress_render)
+                       crf=args.crf, preset=args.preset, window=window, progress=_progress_render,
+                       bridge_sound=args.bridge_sound, bridge_width=args.bridge_width)
         print(f"Done -> {out}")
 
     elif args.cmd == "preview":
@@ -188,7 +196,8 @@ def main(argv=None):
         out = args.out or os.path.splitext(args.input)[0] + ".preview.mp4"
         render(args.input, res["intervals"], out, factor=args.factor, tac_vol=args.tac_vol,
                        crf=args.crf, preset=args.preset, window=window,
-                       progress=_progress_render)
+                       progress=_progress_render,
+                       bridge_sound=args.bridge_sound, bridge_width=args.bridge_width)
         print(f"Preview ({args.range}) -> {out}")
 
     elif args.cmd == "gui":

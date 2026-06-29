@@ -76,7 +76,8 @@ ffvii-realtime gui
 
 - `--game rebirth|remake|revelation` — which game's HUD to detect (default `rebirth`).
 - `--range MM:SS-MM:SS` — process only that section of the video; also speeds up detection since only that span is scanned.
-- `--tac-vol` — volume of the sped-up Tactical-Mode audio, as a percentage (`10%`, `0%` for silent, `100%` for full) or a 0–1 fraction. Default `10%`.
+- `--tac-vol` — volume of the sped-up Tactical-Mode audio, as a percentage (`10%`, `0%` for silent, `100%` for full) or a 0–1 fraction. Default `10%`. (Ignored when seam bridging is on, since bridging replaces that audio.)
+- `--no-bridge-sound` — turn **off** seam audio bridging. By default, speeding up a Tactical segment would make its audio cut out and jump; bridging instead crossfades the real before/after ambient across the seam so the sound stays continuous. On by default. `--bridge-width` (seconds, default `0.35`) tunes the crossfade half-width.
 - `--lead` — start the speed-up this many seconds *before* the menu is detected, to cover the panel slide-in. Default `0.2`.
 
 ### The speed-up factor

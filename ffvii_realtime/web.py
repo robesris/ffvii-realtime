@@ -38,7 +38,7 @@ def _secs(s):
     return float(s)
 
 
-def _job(path, factor, tac_vol, out, start=0.0, duration=None, lead=LEAD):
+def _job(path, factor, tac_vol, out, start=0.0, duration=None, lead=LEAD, bridge_sound=True):
     try:
         _set(running=True, done=False, error=None, output=None, stage="detect",
              message="Scanning for Tactical Mode segments...", pct=2)
@@ -62,7 +62,7 @@ def _job(path, factor, tac_vol, out, start=0.0, duration=None, lead=LEAD):
         if start or duration:
             window = (start, start + duration if duration else info["duration"])
         render(path, res["intervals"], out, factor=factor, tac_vol=tac_vol,
-                       window=window, progress=rprog)
+                       window=window, progress=rprog, bridge_sound=bridge_sound)
         _set(running=False, done=True, stage="done", pct=100, output=out,
              message=f"Done! {res['n_segments']} segments sped up. Saved to {out}")
     except Exception as e:
@@ -103,6 +103,10 @@ a.dl{display:inline-block;margin-top:14px}
   <div><label>End (optional)</label><input id="end" placeholder="(end of video)">
     <div class="note">Process only up to here, e.g. 26:30. Blank = end.</div></div>
 </div>
+<div class="row">
+  <div><label><input id="bridge" type="checkbox" checked> Bridge seam audio</label>
+    <div class="note">Crossfade the real before/after sound across each sped-up segment so the audio never cuts out. Recommended.</div></div>
+</div>
 <label>Output file (optional)</label>
 <input id="out" placeholder="(defaults to <input>.realtime.mp4)">
 <button id="go" onclick="run()">Start</button>
@@ -123,6 +127,7 @@ async function run(){
     body:JSON.stringify({path,factor:+document.getElementById('factor').value,
       tac_vol:pct/100,
       lead:+document.getElementById('lead').value,
+      bridge_sound:document.getElementById('bridge').checked,
       start:document.getElementById('start').value.trim(),
       end:document.getElementById('end').value.trim(),
       out:document.getElementById('out').value.trim()})});
@@ -189,6 +194,7 @@ class Handler(BaseHTTPRequestHandler):
             t = threading.Thread(target=_job, args=(path, float(req.get("factor", 100)),
                                                      float(req.get("tac_vol", 0.1)), out, start, duration,
                                                      float(req.get("lead", LEAD))),
+                                 kwargs={"bridge_sound": bool(req.get("bridge_sound", True))},
                                  daemon=True)
             t.start()
             self._send(200, json.dumps({"ok": True}))

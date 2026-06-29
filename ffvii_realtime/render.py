@@ -64,10 +64,12 @@ def _chunk_graph(segs, cs, factor, atempo, tac_vol):
 
 
 def render(video, intervals, out, factor=100.0, tac_vol=0.1, crf=18, preset="slow",
-           chunk_secs=180.0, work_dir=None, keep_work=False, window=None, progress=None):
+           chunk_secs=180.0, work_dir=None, keep_work=False, window=None, progress=None,
+           bridge_sound=True, bridge_width=0.35):
     """Render `video` -> `out` using `intervals` (list of {start,end}).
 
     window=(lo, hi) renders only that source span (used for previews); None = whole video.
+    bridge_sound: replace the sped-up seam audio with a crossfade so it never cuts out.
     """
     info = probe(video)
     fps = info["fps"]
@@ -114,6 +116,10 @@ def render(video, intervals, out, factor=100.0, tac_vol=0.1, crf=18, preset="slo
                 f.write(f"file '{p}'\n")
         subprocess.run([ffmpeg(), "-y", "-v", "error", "-f", "concat", "-safe", "0",
                         "-i", listpath, "-c", "copy", out], check=True)
+        if bridge_sound:
+            if progress: progress(len(chunks), len(chunks), "bridging audio")
+            from .bridge import bridge_audio
+            bridge_audio(out, video, intervals, factor, window=window, m_max=bridge_width)
     finally:
         if not keep_work:
             shutil.rmtree(work, ignore_errors=True)
