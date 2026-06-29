@@ -82,7 +82,7 @@ def _job(path, factor, tac_vol, out, start=0.0, duration=None, lead=LEAD, bridge
         render(path, res["intervals"], out, factor=factor, tac_vol=tac_vol,
                        window=window, progress=rprog, bridge_sound=bridge_sound)
         _set(running=False, done=True, stage="done", pct=100, output=out,
-             message=f"Done! {res['n_segments']} segments sped up. Saved to {out}")
+             message=f"Done! {res['n_segments']} segments sped up.")
         _log(f"Done -> {out}")
     except Exception as e:
         _set(running=False, done=False, error=str(e), stage="error",
@@ -258,7 +258,12 @@ async function poll(){
     L.style.display='block';L.textContent=s.log.join(String.fromCharCode(10));
     if(atBottom)L.scrollTop=L.scrollHeight;}
   if(s.done||s.error){clearInterval(timer);document.getElementById('go').disabled=false;
-    if(s.done)document.getElementById('result').innerHTML='<a class="dl" href="/api/open?path='+encodeURIComponent(s.output)+'">Reveal output file</a>';}
+    if(s.done){const out=s.output,res=document.getElementById('result');
+      res.textContent='Saved to ';
+      const a=document.createElement('a');a.href='#';a.className='dl';a.textContent=out;
+      a.title='Click to reveal in your file browser';
+      a.onclick=e=>{e.preventDefault();fetch('/api/open?path='+encodeURIComponent(out));};
+      res.appendChild(a);}}
 }
 </script></body></html>"""
 
