@@ -38,7 +38,8 @@ def _secs(s):
     return float(s)
 
 
-def _job(path, factor, tac_vol, out, start=0.0, duration=None, lead=LEAD, bridge_sound=True):
+def _job(path, factor, tac_vol, out, start=0.0, duration=None, lead=LEAD, bridge_sound=True,
+         game="rebirth"):
     try:
         _set(running=True, done=False, error=None, output=None, stage="detect",
              message="Scanning for Tactical Mode segments...", pct=2)
@@ -50,7 +51,7 @@ def _job(path, factor, tac_vol, out, start=0.0, duration=None, lead=LEAD, bridge
             _set(stage="detect", message=f"Scanning ({stage}) {n:,} frames...",
                  pct=2 + int(28 * min(1.0, n / total_frames)))
 
-        res = detect(path, start=start, duration=duration, lead=lead, progress=dprog)
+        res = detect(path, game=game, start=start, duration=duration, lead=lead, progress=dprog)
         _set(stage="render", pct=32,
              message=f"Found {res['n_segments']} slow-mo segments. Rendering...")
 
@@ -70,6 +71,39 @@ def _job(path, factor, tac_vol, out, start=0.0, duration=None, lead=LEAD, bridge
              message=f"Error: {e}")
 
 
+def _native_pick():
+    """Open the OS's native file-open dialog on this machine and return the chosen
+    absolute path (None if cancelled). Lets the GUI offer a real Browse... button
+    without uploading the file -- the server runs on the user's own computer."""
+    import sys
+    import shutil
+    import subprocess
+    try:
+        if sys.platform == "darwin":
+            r = subprocess.run(
+                ["osascript", "-e", 'POSIX path of (choose file with prompt "Select a video")'],
+                capture_output=True, text=True)
+            return {"path": r.stdout.strip() or None, "error": None}  # rc!=0 -> cancelled
+        if sys.platform.startswith("linux"):
+            if not shutil.which("zenity"):
+                return {"path": None, "error": "No native file picker found (install zenity); paste the path instead."}
+            r = subprocess.run(["zenity", "--file-selection", "--title", "Select a video"],
+                               capture_output=True, text=True)
+            return {"path": r.stdout.strip() or None, "error": None}
+        if sys.platform.startswith("win"):
+            ps = ("Add-Type -AssemblyName System.Windows.Forms;"
+                  "$f=New-Object System.Windows.Forms.OpenFileDialog;"
+                  "if($f.ShowDialog() -eq 'OK'){[Console]::Out.Write($f.FileName)}")
+            r = subprocess.run(["powershell", "-NoProfile", "-STA", "-Command", ps],
+                               capture_output=True, text=True)
+            return {"path": r.stdout.strip() or None, "error": None}
+    except FileNotFoundError:
+        return {"path": None, "error": "No native file picker found on this system; paste the path instead."}
+    except Exception as e:
+        return {"path": None, "error": "File picker failed: %s" % e}
+    return {"path": None, "error": "File picker not supported on this platform; paste the path."}
+
+
 PAGE = """<!doctype html><html><head><meta charset="utf-8">
 <title>FFVII Realtime</title><style>
 body{font:15px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;max-width:680px;margin:40px auto;padding:0 20px;color:#222}
@@ -83,12 +117,28 @@ button:disabled{background:#9bb}
 #fill{height:100%;width:0;background:#2b6cb0;transition:width .4s}
 #msg{margin-top:10px;color:#444;min-height:20px}
 .note{font-size:13px;color:#777;margin-top:6px}
+select{width:100%;padding:8px;border:1px solid #ccc;border-radius:6px;box-sizing:border-box;background:#fff}
+.drop{display:flex;gap:8px;align-items:stretch}
+.drop input{flex:1;width:auto}
+.browse{margin-top:0;padding:8px 14px;font-size:14px;background:#555;white-space:nowrap}
+.drop.drag{outline:2px dashed #2b6cb0;outline-offset:4px;border-radius:8px;background:#eef5ff}
 a.dl{display:inline-block;margin-top:14px}
 </style></head><body>
 <h1>FFVII Realtime</h1>
 <p class="sub">Speeds up Final Fantasy VII Rebirth Tactical Mode slow-motion so the fight plays in real time.</p>
-<label>Video file (full path on this computer)</label>
-<input id="path" placeholder="/Users/you/Movies/my-fight.mp4">
+<label>Video file</label>
+<div id="drop" class="drop">
+  <input id="path" placeholder="/Users/you/Movies/my-fight.mp4">
+  <button type="button" id="browse" class="browse" onclick="pick()">Browse&hellip;</button>
+</div>
+<div class="note">Drag a video onto this box, click <b>Browse&hellip;</b>, or paste its full path. The file stays on your computer &mdash; it isn't uploaded.</div>
+<label>Game</label>
+<select id="game">
+  <option value="rebirth">Final Fantasy VII Rebirth</option>
+  <option value="remake">Final Fantasy VII Remake</option>
+  <option value="revelation">Final Fantasy VII Revelation</option>
+</select>
+<div class="note">Which game's HUD to detect &mdash; pick the one your footage is from. (Wrong game = 0 segments found.)</div>
 <div class="row">
   <div><label>Speed-up factor</label><input id="factor" type="number" value="100" min="2" step="1">
     <div class="note">100 = default in-game slowdown. Higher if your "Tactical Mode Slowdown" setting is stronger.</div></div>
@@ -126,6 +176,7 @@ async function run(){
   await fetch('/api/run',{method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({path,factor:+document.getElementById('factor').value,
       tac_vol:pct/100,
+      game:document.getElementById('game').value,
       lead:+document.getElementById('lead').value,
       bridge_sound:document.getElementById('bridge').checked,
       start:document.getElementById('start').value.trim(),
@@ -133,6 +184,36 @@ async function run(){
       out:document.getElementById('out').value.trim()})});
   timer=setInterval(poll,1000);
 }
+const $=id=>document.getElementById(id);
+async function pick(){
+  $('browse').disabled=true; $('browse').textContent='Choosing…';
+  try{
+    const j=await (await fetch('/api/pick')).json();
+    if(j.path){$('path').value=j.path; $('msg').textContent='';}
+    else if(j.error){$('msg').textContent=j.error;}
+  }catch(e){$('msg').textContent='Could not open the file picker: '+e;}
+  $('browse').disabled=false; $('browse').textContent='Browse…';
+}
+(function(){
+  const drop=$('drop'); if(!drop)return;
+  const stop=e=>{e.preventDefault();e.stopPropagation();};
+  ['dragenter','dragover'].forEach(ev=>drop.addEventListener(ev,e=>{stop(e);drop.classList.add('drag');}));
+  ['dragleave','dragend'].forEach(ev=>drop.addEventListener(ev,e=>{stop(e);drop.classList.remove('drag');}));
+  drop.addEventListener('drop',e=>{
+    stop(e); drop.classList.remove('drag');
+    const dt=e.dataTransfer;
+    let uri=(dt.getData('text/uri-list')||dt.getData('text/plain')||'').split(String.fromCharCode(10))[0].trim();
+    let p='';
+    if(uri.indexOf('file://')===0){
+      p=uri.slice(7);
+      if(p.indexOf('localhost')===0)p=p.slice(9);
+      try{p=decodeURIComponent(p);}catch(_){}
+      if(p.length>2&&p.charAt(0)==='/'&&p.charAt(2)===':')p=p.slice(1);
+    }
+    if(p){$('path').value=p; $('msg').textContent='';}
+    else if(dt.files&&dt.files.length){$('msg').textContent="Your browser hid the file's location — click Browse… or paste the full path.";}
+  });
+})();
 async function poll(){
   const s=await (await fetch('/api/status')).json();
   document.getElementById('fill').style.width=s.pct+'%';
@@ -162,6 +243,8 @@ class Handler(BaseHTTPRequestHandler):
         elif u.path == "/api/status":
             with _LOCK:
                 self._send(200, json.dumps(STATE))
+        elif u.path == "/api/pick":
+            self._send(200, json.dumps(_native_pick()))
         elif u.path == "/api/open":
             p = parse_qs(u.query).get("path", [""])[0]
             if p and os.path.exists(p):
@@ -191,10 +274,14 @@ class Handler(BaseHTTPRequestHandler):
             duration = (end - start) if end is not None else None
             if duration is not None and duration <= 0:
                 self._send(400, json.dumps({"error": "end must be after start"})); return
+            game = req.get("game", "rebirth")
+            if game not in ("rebirth", "remake", "revelation"):
+                self._send(400, json.dumps({"error": "unknown game %r" % game})); return
             t = threading.Thread(target=_job, args=(path, float(req.get("factor", 100)),
                                                      float(req.get("tac_vol", 0.1)), out, start, duration,
                                                      float(req.get("lead", LEAD))),
-                                 kwargs={"bridge_sound": bool(req.get("bridge_sound", True))},
+                                 kwargs={"bridge_sound": bool(req.get("bridge_sound", True)),
+                                         "game": game},
                                  daemon=True)
             t.start()
             self._send(200, json.dumps({"ok": True}))
