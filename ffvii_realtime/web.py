@@ -134,9 +134,12 @@ body{font:15px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;max-width:680px;marg
 h1{font-size:22px} .sub{color:#666;margin-top:-8px}
 .ver{font-size:13px;color:#999;font-weight:400}
 label{display:block;margin:14px 0 4px;font-weight:600}
-input:not([type=checkbox]){width:100%;padding:8px;border:1px solid #ccc;border-radius:6px;box-sizing:border-box}
-input[type=checkbox]{width:auto;margin:0 6px 0 0;vertical-align:middle}
+input:not([type=checkbox]):not([type=radio]){width:100%;padding:8px;border:1px solid #ccc;border-radius:6px;box-sizing:border-box}
+input[type=checkbox],input[type=radio]{width:auto;margin:0 8px 0 0;vertical-align:middle}
 label.check{font-weight:600;display:flex;align-items:center}
+.radio{display:block;font-weight:400;margin:8px 0 0}
+#vol{width:64px;padding:5px 7px;vertical-align:middle}
+#vol:disabled{background:#f3f3f3;color:#aaa}
 .row{display:flex;gap:14px}.row>div{flex:1}
 button{margin-top:18px;padding:10px 18px;font-size:15px;border:0;border-radius:6px;background:#2b6cb0;color:#fff;cursor:pointer}
 button:disabled{background:#9bb}
@@ -170,8 +173,6 @@ a.dl{display:inline-block;margin-top:14px}
 <div class="row">
   <div><label>Speed-up factor</label><input id="factor" type="number" value="100" min="2" step="1">
     <div class="note">100 = default in-game slowdown. Different if you're using a Tactical Mode slowdown setting other than the default. Know the real factor for any setting? Please <a href="https://github.com/robesris/ffvii-realtime/issues" target="_blank" rel="noopener">open an issue</a>.</div></div>
-  <div><label>Tactical audio volume</label><input id="vol" type="text" value="10%">
-    <div class="note">Percentage of normal volume for sped-up segments: 0% = silent, 100% = full.</div></div>
   <div><label>Lead-in (seconds)</label><input id="lead" type="number" value="0.2" min="0" step="0.05">
     <div class="note">Start the speed-up this many seconds before the menu is detected, to cover the panel slide-in.</div></div>
 </div>
@@ -181,10 +182,10 @@ a.dl{display:inline-block;margin-top:14px}
   <div><label>End (optional)</label><input id="end" placeholder="(end of video)">
     <div class="note">Process only up to here, e.g. 26:30. Blank = end.</div></div>
 </div>
-<div class="row">
-  <div><label class="check"><input id="bridge" type="checkbox" checked> Smooth audio across sped-up sections</label>
-    <div class="note">Crossfades the real before/after sound across each sped-up segment so the audio doesn't cut out. Recommended.</div></div>
-</div>
+<label>Sped-up audio</label>
+<label class="radio"><input type="radio" name="audio" value="smooth" checked onclick="audioMode()"> Smooth it across the sped-up sections &mdash; crossfade so the audio never cuts out <b>(recommended)</b></label>
+<label class="radio"><input type="radio" name="audio" value="keep" onclick="audioMode()"> Keep the sped-up audio, at <input id="vol" type="text" value="10%" disabled> volume (0% = silent)</label>
+<div class="note">Smoothing pulls the real before/after sound across each sped-up segment so it never drops out. "Keep" plays the segment's own (very fast) audio at the volume you set.</div>
 <label>Output file (optional)</label>
 <input id="out" placeholder="(defaults to <input>.realtime.mp4)">
 <button id="go" onclick="run()">Start</button>
@@ -204,7 +205,7 @@ async function run(){
     tac_vol:pct/100,
     game:document.getElementById('game').value,
     lead:+document.getElementById('lead').value,
-    bridge_sound:document.getElementById('bridge').checked,
+    bridge_sound:document.querySelector('input[name=audio]:checked').value==='smooth',
     start:document.getElementById('start').value.trim(),
     end:document.getElementById('end').value.trim(),
     out:document.getElementById('out').value.trim()};
@@ -255,6 +256,11 @@ async function pick(){
     else if(dt.files&&dt.files.length){$('msg').textContent="Your browser hid the file's location — click Browse… or paste the full path.";}
   });
 })();
+function audioMode(){
+  const smooth=document.querySelector('input[name=audio]:checked').value==='smooth';
+  document.getElementById('vol').disabled=smooth;
+}
+audioMode();
 async function poll(){
   const s=await (await fetch('/api/status')).json();
   document.getElementById('fill').style.width=s.pct+'%';
