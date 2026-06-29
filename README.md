@@ -1,5 +1,9 @@
 # FFVII Realtime
 
+[![PyPI version](https://img.shields.io/pypi/v/ffvii-realtime)](https://pypi.org/project/ffvii-realtime/)
+[![Python versions](https://img.shields.io/pypi/pyversions/ffvii-realtime)](https://pypi.org/project/ffvii-realtime/)
+[![License: AGPL v3](https://img.shields.io/pypi/l/ffvii-realtime)](LICENSE)
+
 **Remove Tactical Mode slow-motion from Final Fantasy VII Rebirth combat captures so the whole fight plays at uniform real-time speed.**
 
 In Rebirth, opening the Tactical Mode command menu drops the game into heavy slow-motion while you pick your actions. It's great to play, but it makes a *recording* drag — the footage constantly stutters between real-time action and long slow-motion stretches. FFVII Realtime automatically finds those slow-motion segments and speeds only them back up, leaving the rest of the fight untouched, so the whole thing flows at one natural pace.
