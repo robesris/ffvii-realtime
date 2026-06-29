@@ -163,7 +163,7 @@ a.dl{display:inline-block;margin-top:14px}
 <div class="note">Which game's HUD to detect &mdash; <b>you must pick the one your footage is from</b>, or detection finds 0 segments. Defaults to Rebirth.</div>
 <div class="row">
   <div><label>Speed-up factor</label><input id="factor" type="number" value="100" min="2" step="1">
-    <div class="note">100 = default in-game slowdown. Higher if your "Tactical Mode Slowdown" setting is stronger.</div></div>
+    <div class="note">100 = default in-game slowdown. Different if you're using a Tactical Mode slowdown setting other than the default. Know the real factor for any setting? Please <a href="https://github.com/robesris/ffvii-realtime/issues" target="_blank" rel="noopener">open an issue</a>.</div></div>
   <div><label>Tactical audio volume</label><input id="vol" type="text" value="10%">
     <div class="note">Percentage of normal volume for sped-up segments: 0% = silent, 100% = full.</div></div>
   <div><label>Lead-in (seconds)</label><input id="lead" type="number" value="0.2" min="0" step="0.05">
