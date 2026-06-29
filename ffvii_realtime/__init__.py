@@ -3,5 +3,5 @@ Rebirth combat captures so the whole fight plays at uniform real-time speed."""
 from .detect import detect
 from .render import render
 
-__version__ = "0.2.5"
+__version__ = "0.2.6"
 __all__ = ["detect", "render", "__version__"]
