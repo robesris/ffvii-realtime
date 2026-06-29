@@ -38,10 +38,10 @@ Requires **Python 3.8+**. No `pipx`? [Install it](https://pipx.pypa.io/stable/ho
 or just use `pip install ffvii-realtime` (pipx only adds isolation). On Windows, check
 *"Add python.exe to PATH"* when installing Python.
 
-Prefer the command line? After installing, the one-shot is:
+Prefer the command line? After installing, the one-shot is (pass `--game` to match your footage):
 
 ```bash
-ffvii-realtime fix my-fight.mp4 -o my-fight.realtime.mp4
+ffvii-realtime fix my-fight.mp4 --game rebirth -o my-fight.realtime.mp4
 ```
 
 See [Command-line usage](#command-line-usage) for previews, ranges, and other games.
@@ -55,24 +55,29 @@ See [Command-line usage](#command-line-usage) for previews, ranges, and other ga
 ```bash
 # already installed via `pipx install ffvii-realtime` (contributors: `pip install -e .`)
 
+# ALWAYS pass --game to match your footage: rebirth | remake | revelation.
+# (It's optional and defaults to rebirth, but set it explicitly so non-Rebirth
+#  footage isn't silently missed — the wrong game finds 0 segments.)
+
 # the usual one-shot: detect slow-mo and render the real-time version
-ffvii-realtime fix my-fight.mp4 -o my-fight.realtime.mp4
+ffvii-realtime fix my-fight.mp4 --game rebirth -o my-fight.realtime.mp4
+
+# Remake / Revelation footage:
+ffvii-realtime fix my-remake-fight.mp4 --game remake
+ffvii-realtime fix my-revelation-fight.mp4 --game revelation
 
 # verify settings on a short window first (recommended)
-ffvii-realtime preview my-fight.mp4 --range 4:40-5:20 -o test.mp4
+ffvii-realtime preview my-fight.mp4 --game rebirth --range 4:40-5:20 -o test.mp4
 
 # process only a section of the video (also makes detection faster),
 # and mute the sped-up slow-mo audio
-ffvii-realtime fix my-fight.mp4 --range 24:00-26:30 --tac-vol 0%
+ffvii-realtime fix my-fight.mp4 --game rebirth --range 24:00-26:30 --tac-vol 0%
 
-# pick the game (default rebirth)
-ffvii-realtime fix my-remake-fight.mp4 --game remake
-
-# separate steps
-ffvii-realtime detect my-fight.mp4 -o intervals.json
+# separate steps — only `detect` needs --game; `render` reuses the saved intervals
+ffvii-realtime detect my-fight.mp4 --game rebirth -o intervals.json
 ffvii-realtime render my-fight.mp4 -i intervals.json -o out.mp4
 
-# launch the browser UI
+# launch the browser UI (choose the game from the dropdown)
 ffvii-realtime gui
 ```
 
