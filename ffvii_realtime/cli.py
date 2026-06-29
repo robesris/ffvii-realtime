@@ -70,8 +70,10 @@ def _add_detect_opts(p):
     p.add_argument("--nr2", type=float, default=NR2,
                    help="veto threshold: reject frames where R2 matches the normal "
                         "command-menu position (not Tactical)")
-    p.add_argument("--merge-gap", type=float, default=MERGE_GAP)
-    p.add_argument("--min-dur", type=float, default=MIN_DUR)
+    p.add_argument("--merge-gap", type=float, default=MERGE_GAP,
+                   help="merge Tactical segments separated by less than this gap (s)")
+    p.add_argument("--min-dur", type=float, default=MIN_DUR,
+                   help="discard detected segments shorter than this (s)")
 
 
 def _add_render_opts(p):
@@ -82,7 +84,8 @@ def _add_render_opts(p):
                    help="volume of Tactical-segment audio: a percentage ('10%%', '0%%' "
                         "for silent) or a 0-1 fraction (default 10%%)")
     p.add_argument("--crf", type=int, default=18, help="x264 quality (lower=better, 18=near-lossless)")
-    p.add_argument("--preset", default="slow")
+    p.add_argument("--preset", default="slow",
+                   help="x264 speed/efficiency preset (slower = smaller file; default slow)")
 
 
 def _progress_detect(stage, n):
@@ -117,23 +120,38 @@ def _run_detect(args):
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="ffvii-realtime", description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
+    try:
+        from importlib.metadata import version, PackageNotFoundError
+        try:
+            _ver = version("ffvii-realtime")
+        except PackageNotFoundError:
+            _ver = "dev"
+    except Exception:
+        _ver = "dev"
+    ap.add_argument("--version", action="version", version=f"%(prog)s {_ver}")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
+    VID = "recorded gameplay video (e.g. capture.mp4)"
     d = sub.add_parser("detect", help="find Tactical Mode segments -> intervals.json")
-    d.add_argument("input"); d.add_argument("-o", "--out")
+    d.add_argument("input", help=VID)
+    d.add_argument("-o", "--out", help="intervals JSON output (default: INPUT.intervals.json)")
     _add_detect_opts(d); _add_range_opt(d)
 
     f = sub.add_parser("fix", help="detect + render (the usual one-shot command)")
-    f.add_argument("input"); f.add_argument("-o", "--out")
+    f.add_argument("input", help=VID)
+    f.add_argument("-o", "--out", help="output video (default: INPUT.realtime.mp4)")
     _add_detect_opts(f); _add_render_opts(f); _add_range_opt(f)
 
     r = sub.add_parser("render", help="render from an existing intervals.json")
-    r.add_argument("input"); r.add_argument("-i", "--intervals", required=True)
-    r.add_argument("-o", "--out"); _add_render_opts(r); _add_range_opt(r)
+    r.add_argument("input", help=VID)
+    r.add_argument("-i", "--intervals", required=True, help="intervals JSON from `detect`")
+    r.add_argument("-o", "--out", help="output video (default: INPUT.realtime.mp4)")
+    _add_render_opts(r); _add_range_opt(r)
 
     pv = sub.add_parser("preview", help="detect+render a short window to verify settings")
-    pv.add_argument("input")
-    pv.add_argument("-o", "--out"); _add_detect_opts(pv); _add_render_opts(pv)
+    pv.add_argument("input", help=VID)
+    pv.add_argument("-o", "--out", help="output video (default: INPUT.preview.mp4)")
+    _add_detect_opts(pv); _add_render_opts(pv)
     _add_range_opt(pv, required=True)
 
     g = sub.add_parser("gui", help="launch the local web UI in your browser")
