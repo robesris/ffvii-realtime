@@ -128,7 +128,9 @@ PAGE = """<!doctype html><html><head><meta charset="utf-8">
 body{font:15px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;max-width:680px;margin:40px auto;padding:0 20px;color:#222}
 h1{font-size:22px} .sub{color:#666;margin-top:-8px}
 label{display:block;margin:14px 0 4px;font-weight:600}
-input{width:100%;padding:8px;border:1px solid #ccc;border-radius:6px;box-sizing:border-box}
+input:not([type=checkbox]){width:100%;padding:8px;border:1px solid #ccc;border-radius:6px;box-sizing:border-box}
+input[type=checkbox]{width:auto;margin:0 6px 0 0;vertical-align:middle}
+label.check{font-weight:600;display:flex;align-items:center}
 .row{display:flex;gap:14px}.row>div{flex:1}
 button{margin-top:18px;padding:10px 18px;font-size:15px;border:0;border-radius:6px;background:#2b6cb0;color:#fff;cursor:pointer}
 button:disabled{background:#9bb}
@@ -174,8 +176,8 @@ a.dl{display:inline-block;margin-top:14px}
     <div class="note">Process only up to here, e.g. 26:30. Blank = end.</div></div>
 </div>
 <div class="row">
-  <div><label><input id="bridge" type="checkbox" checked> Bridge seam audio</label>
-    <div class="note">Crossfade the real before/after sound across each sped-up segment so the audio never cuts out. Recommended.</div></div>
+  <div><label class="check"><input id="bridge" type="checkbox" checked> Smooth audio across sped-up sections</label>
+    <div class="note">Crossfades the real before/after sound across each sped-up segment so the audio doesn't cut out. Recommended.</div></div>
 </div>
 <label>Output file (optional)</label>
 <input id="out" placeholder="(defaults to <input>.realtime.mp4)">
