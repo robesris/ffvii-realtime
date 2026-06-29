@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ffvii-realtime"
-version = "0.2.1"
+version = "0.2.2"
 description = "Remove Tactical Mode slow-motion from Final Fantasy VII Rebirth combat captures so the whole fight plays at uniform real-time speed."
 readme = "README.md"
 requires-python = ">=3.8"
