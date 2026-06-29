@@ -15,6 +15,11 @@ from .detect import detect, LEAD
 from .render import render
 from .ffmpeg_util import probe
 
+try:
+    from . import __version__ as VERSION
+except Exception:
+    VERSION = "?"
+
 STATE = {"running": False, "stage": "idle", "message": "", "pct": 0,
          "done": False, "output": None, "error": None, "log": []}
 _LOCK = threading.Lock()
@@ -127,6 +132,7 @@ PAGE = """<!doctype html><html><head><meta charset="utf-8">
 <title>FFVII Realtime</title><style>
 body{font:15px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;max-width:680px;margin:40px auto;padding:0 20px;color:#222}
 h1{font-size:22px} .sub{color:#666;margin-top:-8px}
+.ver{font-size:13px;color:#999;font-weight:400}
 label{display:block;margin:14px 0 4px;font-weight:600}
 input:not([type=checkbox]){width:100%;padding:8px;border:1px solid #ccc;border-radius:6px;box-sizing:border-box}
 input[type=checkbox]{width:auto;margin:0 6px 0 0;vertical-align:middle}
@@ -146,7 +152,7 @@ select{width:100%;padding:8px;border:1px solid #ccc;border-radius:6px;box-sizing
 #log{margin-top:14px;background:#1e1e1e;color:#d4d4d4;font:12px/1.45 ui-monospace,Menlo,Consolas,monospace;padding:10px 12px;border-radius:6px;height:170px;overflow:auto;white-space:pre-wrap;display:none}
 a.dl{display:inline-block;margin-top:14px}
 </style></head><body>
-<h1>FFVII Realtime</h1>
+<h1>FFVII Realtime <span class="ver">v__FFVII_VERSION__</span></h1>
 <p class="sub">Speeds up Final Fantasy VII Rebirth Tactical Mode slow-motion so the fight plays in real time.</p>
 <label>Video file</label>
 <div id="drop" class="drop">
@@ -284,7 +290,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         u = urlparse(self.path)
         if u.path == "/":
-            self._send(200, PAGE, "text/html; charset=utf-8")
+            self._send(200, PAGE.replace("__FFVII_VERSION__", VERSION), "text/html; charset=utf-8")
         elif u.path == "/api/status":
             with _LOCK:
                 self._send(200, json.dumps(STATE))
