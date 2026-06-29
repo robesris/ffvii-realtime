@@ -65,24 +65,41 @@ def ffprobe():
     )
 
 
+def _parse_rate(rate):
+    """'30000/1001' or '30' -> float fps; returns 0.0 for missing/'0/0'."""
+    rate = (rate or "").strip()
+    if not rate:
+        return 0.0
+    if "/" in rate:
+        n, d = rate.split("/", 1)
+        d = float(d or 0)
+        return float(n) / d if d else 0.0
+    try:
+        return float(rate)
+    except ValueError:
+        return 0.0
+
+
 def _probe_ffprobe(video):
     out = subprocess.run(
         [ffprobe(), "-v", "error", "-select_streams", "v:0",
-         "-show_entries", "stream=width,height,r_frame_rate:format=duration",
+         "-show_entries", "stream=width,height,r_frame_rate,avg_frame_rate:format=duration",
          "-of", "default=noprint_wrappers=1:nokey=0", video],
         capture_output=True, text=True).stdout
     info = {}
     for line in out.splitlines():
         if "=" in line:
             k, v = line.split("=", 1)
-            info[k] = v
-    n, d = info["r_frame_rate"].split("/")
-    return {
-        "width": int(info["width"]),
-        "height": int(info["height"]),
-        "fps": float(n) / float(d),
-        "duration": float(info["duration"]),
-    }
+            info[k] = v.strip()
+    # prefer r_frame_rate; some builds/files only give a usable avg_frame_rate
+    fps = _parse_rate(info.get("r_frame_rate")) or _parse_rate(info.get("avg_frame_rate"))
+    try:
+        w, h, dur = int(info["width"]), int(info["height"]), float(info["duration"])
+    except (KeyError, ValueError):
+        raise ValueError("ffprobe returned incomplete metadata for %r: %r" % (video, out))
+    if not (w and h and fps and dur):
+        raise ValueError("ffprobe returned incomplete metadata for %r: %r" % (video, out))
+    return {"width": w, "height": h, "fps": fps, "duration": dur}
 
 
 def _duration_via_ffmpeg(video):
@@ -133,5 +150,7 @@ def probe(video):
     Prefers ffprobe (most accurate); falls back to OpenCV when ffprobe is absent."""
     try:
         return _probe_ffprobe(video)
-    except FileNotFoundError:
+    except Exception:
+        # ffprobe missing, or a build/version whose output we couldn't use
+        # (e.g. no r_frame_rate). OpenCV is always available — fall back to it.
         return _probe_opencv(video)
