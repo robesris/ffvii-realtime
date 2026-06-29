@@ -30,9 +30,9 @@ pipx install ffvii-realtime     # installs the `ffvii-realtime` command, isolate
 ffvii-realtime gui              # opens the browser app
 ```
 
-That's the whole setup: **FFmpeg ships with it** — nothing else to install. Paste your
-video's path into the app, set the speed-up factor, click **Start** — the finished
-file is saved next to the original.
+That's the whole setup: **FFmpeg ships with it** — nothing else to install. Drag your
+video into the app (or click **Browse…**, or paste its full path), set the speed-up
+factor, click **Start** — the finished file is saved next to the original.
 
 Requires **Python 3.8+**. No `pipx`? [Install it](https://pipx.pypa.io/stable/how-to/install-pipx/),
 or just use `pip install ffvii-realtime` (pipx only adds isolation). On Windows, check
