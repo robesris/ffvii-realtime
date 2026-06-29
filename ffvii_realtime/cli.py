@@ -92,6 +92,8 @@ def _add_render_opts(p):
                         "by default, so the sound never cuts out)")
     p.add_argument("--bridge-width", type=float, default=0.35,
                    help="seam crossfade half-width in seconds (total crossfade = 2x this)")
+    p.add_argument("--force", action="store_true",
+                   help="overwrite the output file if it already exists (default: refuse)")
 
 
 def _progress_detect(stage, n):
@@ -100,6 +102,15 @@ def _progress_detect(stage, n):
 
 def _progress_render(i, total, status):
     print(f"  chunk {i}/{total} {status}", file=sys.stderr)
+
+
+def _guard_out(out, force):
+    """Refuse to clobber an existing output unless --force was given."""
+    if os.path.exists(out) and not force:
+        sys.stderr.write(
+            "Error: output already exists: %s\n"
+            "       pass --force to overwrite, or -o to write to a different path.\n" % out)
+        raise SystemExit(2)
 
 
 def _run_detect(args):
@@ -181,9 +192,10 @@ def main(argv=None):
         _run_detect(args)
 
     elif args.cmd == "fix":
+        out = args.out or os.path.splitext(args.input)[0] + ".realtime.mp4"
+        _guard_out(out, args.force)
         res, ipath = _run_detect(args)
         _, _, window = _range_args(args)
-        out = args.out or os.path.splitext(args.input)[0] + ".realtime.mp4"
         print(f"Rendering -> {out} (factor {args.factor}x) ...", file=sys.stderr)
         render(args.input, res["intervals"], out, factor=args.factor,
                        tac_vol=args.tac_vol, crf=args.crf, preset=args.preset,
@@ -192,20 +204,22 @@ def main(argv=None):
         print(f"Done -> {out}")
 
     elif args.cmd == "render":
+        out = args.out or os.path.splitext(args.input)[0] + ".realtime.mp4"
+        _guard_out(out, args.force)
         data = json.load(open(args.intervals))
         ivs = data["intervals"] if isinstance(data, dict) else data
         _, _, window = _range_args(args)
-        out = args.out or os.path.splitext(args.input)[0] + ".realtime.mp4"
         render(args.input, ivs, out, factor=args.factor, tac_vol=args.tac_vol,
                        crf=args.crf, preset=args.preset, window=window, progress=_progress_render,
                        bridge_sound=args.bridge_sound, bridge_width=args.bridge_width)
         print(f"Done -> {out}")
 
     elif args.cmd == "preview":
+        out = args.out or os.path.splitext(args.input)[0] + ".preview.mp4"
+        _guard_out(out, args.force)
         # detect only the window (fast), then render it; interval times are absolute
         res, _ = _run_detect(args)
         _, _, window = _range_args(args)
-        out = args.out or os.path.splitext(args.input)[0] + ".preview.mp4"
         render(args.input, res["intervals"], out, factor=args.factor, tac_vol=args.tac_vol,
                        crf=args.crf, preset=args.preset, window=window,
                        progress=_progress_render,

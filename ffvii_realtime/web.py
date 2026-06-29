@@ -190,21 +190,33 @@ a.dl{display:inline-block;margin-top:14px}
 let timer=null;
 async function run(){
   const path=document.getElementById('path').value.trim();
-  if(!path){document.getElementById('msg').textContent='Enter the video file path.';return;}
+  const msg=document.getElementById('msg');
+  if(!path){msg.textContent='Enter the video file path.';return;}
   let pct=parseFloat(document.getElementById('vol').value.replace('%',''));
   if(isNaN(pct)||pct<0)pct=10;
-  document.getElementById('go').disabled=true;
-  document.getElementById('bar').style.display='block';
-  document.getElementById('result').innerHTML='';
-  await fetch('/api/run',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({path,factor:+document.getElementById('factor').value,
-      tac_vol:pct/100,
-      game:document.getElementById('game').value,
-      lead:+document.getElementById('lead').value,
-      bridge_sound:document.getElementById('bridge').checked,
-      start:document.getElementById('start').value.trim(),
-      end:document.getElementById('end').value.trim(),
-      out:document.getElementById('out').value.trim()})});
+  const payload={path,factor:+document.getElementById('factor').value,
+    tac_vol:pct/100,
+    game:document.getElementById('game').value,
+    lead:+document.getElementById('lead').value,
+    bridge_sound:document.getElementById('bridge').checked,
+    start:document.getElementById('start').value.trim(),
+    end:document.getElementById('end').value.trim(),
+    out:document.getElementById('out').value.trim()};
+  const go=document.getElementById('go'), bar=document.getElementById('bar');
+  const stop=m=>{go.disabled=false;bar.style.display='none';msg.textContent=m;};
+  go.disabled=true; bar.style.display='block'; document.getElementById('result').innerHTML='';
+  const post=p=>fetch('/api/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)});
+  let r=await post(payload);
+  if(r.status===409){
+    const j=await r.json().catch(()=>({}));
+    if(j.error==='output exists'){
+      const nl=String.fromCharCode(10);
+      if(confirm((j.out||'The output file')+' already exists.'+nl+nl+'Overwrite it?')){
+        payload.overwrite=true; r=await post(payload);
+      } else { stop('Cancelled — set a different Output file to keep the existing one.'); return; }
+    } else { stop(j.error||'Already running.'); return; }
+  }
+  if(!r.ok){ const j=await r.json().catch(()=>({})); stop(j.error||('Error '+r.status)); return; }
   timer=setInterval(poll,1000);
 }
 const $=id=>document.getElementById(id);
@@ -302,6 +314,8 @@ class Handler(BaseHTTPRequestHandler):
                 if STATE["running"]:
                     self._send(409, json.dumps({"error": "already running"})); return
             out = req.get("out") or os.path.splitext(path)[0] + ".realtime.mp4"
+            if os.path.exists(out) and not req.get("overwrite"):
+                self._send(409, json.dumps({"error": "output exists", "out": out})); return
             try:
                 start = _secs(req.get("start")) or 0.0
                 end = _secs(req.get("end"))

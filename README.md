@@ -88,6 +88,7 @@ ffvii-realtime gui
 - `--tac-vol` — volume of the sped-up Tactical-Mode audio, as a percentage (`10%`, `0%` for silent, `100%` for full) or a 0–1 fraction. Default `10%`. (Ignored when seam bridging is on, since bridging replaces that audio.)
 - `--no-bridge-sound` — turn **off** seam audio bridging. By default, speeding up a Tactical segment would make its audio cut out and jump; bridging instead crossfades the real before/after ambient across the seam so the sound stays continuous. On by default. `--bridge-width` (seconds, default `0.35`) tunes the crossfade half-width.
 - `--lead` — start the speed-up this many seconds *before* the menu is detected, to cover the panel slide-in. Default `0.2`.
+- `--force` — overwrite the output file if it already exists. By default the tool refuses, so you can't clobber a previous result by accident (the browser UI asks for confirmation instead).
 
 ### The speed-up factor
 
