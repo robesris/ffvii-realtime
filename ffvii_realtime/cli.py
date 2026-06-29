@@ -165,6 +165,18 @@ def main(argv=None):
 
     args = ap.parse_args(argv)
 
+    # validate the input path up front with a clear message (a common gotcha is a
+    # pasted path that wrapped in the terminal, embedding a newline)
+    if getattr(args, "input", None) is not None:
+        args.input = args.input.strip()
+        if not os.path.isfile(args.input):
+            hint = ""
+            if "\n" in args.input:
+                hint = ("  (the path contains a line break — re-enter it on one line, "
+                        "or drag the file into the terminal)")
+            sys.stderr.write("Error: no such file: %r%s\n" % (args.input, hint))
+            raise SystemExit(2)
+
     if args.cmd == "detect":
         _run_detect(args)
 
