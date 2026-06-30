@@ -14,7 +14,7 @@ In Rebirth, opening the Tactical Mode command menu drops the game into heavy slo
 
 ## How it works (short version)
 
-1. **Detect** — a computer-vision pass (OpenCV) scans every frame and recognizes Tactical Mode by the on-screen **L2/R2 button prompts** at their fixed positions, made robust to bright/gray/busy backgrounds by combining color + white-mask + black-mask matching. A **motion check** confirms the scene is actually in slow-motion (so a stray badge match during fast action can't trigger a false speed-up).
+1. **Detect** — a computer-vision pass (OpenCV) scans every frame and recognizes Tactical Mode two ways: the on-screen **L2/R2 button prompts** at their fixed positions, and the **"Tactical Mode" header text** above the command menu. Both are made robust to bright/gray/busy backgrounds by combining color + white-mask + black-mask matching, and a **motion check** confirms the scene is actually in slow-motion (so a stray match during fast action can't trigger a false speed-up). The header-text signal means **solo boss fights work too**: those have no party, so the L2/R2 *allies* prompt never appears — but the menu header still does.
 2. **Render** — FFmpeg re-times each detected segment (`setpts` for video, `atempo` for audio, kept exactly in sync), speeding up the slow-motion while normal-speed combat passes through untouched, then stitches it all back together.
 
 Detection normalizes any 16:9 resolution to 1080p internally, so the bundled templates work at 1080p / 1440p / 4K. Rendering happens at your source's native resolution.
