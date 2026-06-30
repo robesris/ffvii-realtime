@@ -12,7 +12,7 @@
 
 In Rebirth, opening the Tactical Mode command menu drops the game into heavy slow-motion (apparently 100x slower than real-time) while you pick your actions. It's great to play, but these pauses, especially long ones, aren't much fun to watch in a recording. FFVII Realtime automatically finds those slow-motion segments and speeds only them back up, leaving the rest of the fight untouched, so the whole thing flows at one natural pace.
 
-> Example: a 1:55:00 capture became ~1:07:00 of continuous, full-speed combat — ~700 Tactical Mode segments detected and sped up, fully audio-synced.
+> Example: a 1:55:00 capture became ~1:09:00 of continuous, full-speed combat — around 570 Tactical Mode segments (~47 minutes of slow-motion) detected and sped up, fully audio-synced.
 
 ---
 
