@@ -69,7 +69,8 @@ class Profile:
     def __init__(self, name, band, l2_sub, r2_sub, tpl_subdir,
                  white_thr=200, black_thr=50, use_black=True, guard=False, nr2_sub=None,
                  thresh=0.48, l2_frozen=0.55, frozen_mode="l2",
-                 conf_l2=0.90, conf_r2=0.60, bridge_gap=0.0, bridge_motion=2.0):
+                 conf_l2=0.90, conf_r2=0.60, bridge_gap=0.0, bridge_motion=2.0,
+                 tac_band=None, tac_sub=None, tac_thr=0.55, tac_conf=0.80):
         self.name = name
         self.BAND = band              # (x, y, w, h) of the band decoded in pass 1
         self.L2_SUB = l2_sub          # L2 search window within the band
@@ -102,6 +103,22 @@ class Profile:
         self.r2_wht = [white_mask(t, white_thr) for t in self.r2_col]
         self.l2_blk = [black_mask(t, black_thr) for t in self.l2_col]
         self.r2_blk = [black_mask(t, black_thr) for t in self.r2_col]
+        # Optional "Tactical Mode" header-text signal (top-left). The L2/R2 badges
+        # are an *allies* prompt and vanish in solo boss fights (one playable
+        # character, no party) -> badge-only detection finds nothing there. But the
+        # "Tactical Mode" text above the command menu is shown whenever the menu is
+        # open, solo or party, so matching it rescues solo fights and reinforces
+        # party ones. Decoded as its own small band in detect.py (see TAC_BAND).
+        self.TAC_BAND = tac_band      # (x, y, w, h) top-left text band, or None to disable
+        self.TAC_SUB = tac_sub if tac_sub is not None else (
+            (0, 0, tac_band[2], tac_band[3]) if tac_band is not None else None)
+        self.tac_thr = tac_thr        # "Tactical Mode" text match threshold
+        self.tac_conf = tac_conf      # high-confidence text match: bypasses the motion gate
+        if tac_band is not None:
+            self.tac_col = [_load(tpl_subdir, "tac_a.png"), _load(tpl_subdir, "tac_b.png")]
+            self.tac_wht = [white_mask(t, white_thr) for t in self.tac_col]
+        else:
+            self.tac_col = self.tac_wht = None
 
     def _score(self, band, sub, col, wht, blk):
         x, y, w, h = sub
@@ -128,6 +145,18 @@ class Profile:
             return 0.0
         return self._score(band, self.NR2_SUB, self.r2_col, self.r2_wht, self.r2_blk)
 
+    def score_tac(self, tac_band):
+        """Match the 'Tactical Mode' header text in its top-left band. 0.0 if the
+        profile has no tac band. Scored as max(color, guarded white-mask) so a busy
+        or bright background behind the text can't defeat it."""
+        if self.tac_col is None:
+            return 0.0
+        x, y, w, h = self.TAC_SUB
+        roi = tac_band[y:y + h, x:x + w]
+        c = _best(roi, self.tac_col)
+        m = _best_guarded(white_mask(roi, self.white_thr), self.tac_wht)
+        return max(c, m)
+
 
 # Rebirth: white-on-black badges, R2 far-right, lower-left normal menu -> needs veto.
 # (Numeric path identical to the original single-profile detector: max(color,
@@ -140,6 +169,10 @@ REBIRTH = Profile(
     tpl_subdir="rebirth",
     white_thr=200, black_thr=50, use_black=True, guard=False,
     nr2_sub=(53, 3, 90, 60),
+    # "Tactical Mode" header text, top-left. Rescues solo boss fights (Cloud vs.
+    # Rufus etc.) where there is no party, so no L2/R2 allies prompt ever appears.
+    # Band spans the text with slack for the slide-in; template is the glyphs only.
+    tac_band=(60, 606, 360, 70),
 )
 
 # Remake: dark-text-on-white shield badges, compact L2 <name> R2 cluster on the

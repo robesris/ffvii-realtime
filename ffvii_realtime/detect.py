@@ -131,6 +131,26 @@ def detect(video, game="rebirth", thresh=None, l2_frozen=None, motion=MOTION,
             progress("badges", idx)
     p1.wait()
 
+    # pass 1b: "Tactical Mode" header text (optional; rescues solo boss fights that
+    # have no party and so never show the L2/R2 allies prompt). Decoded as its own
+    # small top-left band, scored per frame, OR'd into the flags below.
+    tacs = [0.0] * idx
+    if profile.TAC_BAND is not None:
+        tx, ty, tw, th = profile.TAC_BAND
+        pt = pipe(f"scale={badges.REF_W}:{badges.REF_H},crop={tw}:{th}:{tx}:{ty}", "bgr24")
+        ftb = tw * th * 3
+        k = 0
+        while k < idx:
+            buf = pt.stdout.read(ftb)
+            if len(buf) < ftb:
+                break
+            tband = np.frombuffer(buf, np.uint8).reshape(th, tw, 3)
+            tacs[k] = profile.score_tac(tband)
+            k += 1
+            if progress and k % 10000 == 0:
+                progress("tactical-text", k)
+        pt.wait()
+
     # pass 2: motion
     p2 = pipe(f"scale={MOT_W}:{MOT_H}", "gray")
     mb = MOT_W * MOT_H
@@ -172,8 +192,12 @@ def detect(video, game="rebirth", thresh=None, l2_frozen=None, motion=MOTION,
             frozen = False
         else:  # 'l2': menu up (L present) and scene frozen
             frozen = l2s[i] > l2_frozen and ms[i] < motion
+        # "Tactical Mode" header text present and the scene is slow-mo. A very strong
+        # text match bypasses the motion gate (like `confident` for badges), to ride
+        # through bright effects that would inflate the motion proxy.
+        tac = tacs[i] > profile.tac_thr and (ms[i] < slow_cap or tacs[i] > profile.tac_conf)
         normal_menu = nr2s[i] > nr2   # R2 at the normal-menu position -> not Tactical
-        flags.append((strong or confident or frozen) and not normal_menu)
+        flags.append((strong or confident or frozen or tac) and not normal_menu)
 
     ivs = _intervals(flags, fps, merge_gap, min_dur, lead, t0=start)
     if profile.bridge_gap > 0:
