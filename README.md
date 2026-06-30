@@ -6,7 +6,7 @@
 
 **Remove Tactical Mode slow-motion from Final Fantasy VII Rebirth combat captures so the whole fight plays at uniform real-time speed.**
 
-In Rebirth, opening the Tactical Mode command menu drops the game into heavy slow-motion while you pick your actions. It's great to play, but it makes a *recording* drag — the footage constantly stutters between real-time action and long slow-motion stretches. FFVII Realtime automatically finds those slow-motion segments and speeds only them back up, leaving the rest of the fight untouched, so the whole thing flows at one natural pace.
+In Rebirth, opening the Tactical Mode command menu drops the game into heavy slow-motion (apparently 100x slower than real-time) while you pick your actions. It's great to play, but these pauses, especially long ones, aren't much fun to watch in a recording. FFVII Realtime automatically finds those slow-motion segments and speeds only them back up, leaving the rest of the fight untouched, so the whole thing flows at one natural pace.
 
 > Example: a 1:55:00 capture became ~1:07:00 of continuous, full-speed combat — ~700 Tactical Mode segments detected and sped up, fully audio-synced.
 
@@ -100,7 +100,7 @@ ffvii-realtime gui
 
 ## Caveats
 
-- **Tested on one capture so far** (1080p, PS5, default HUD). The detection keys on the game's own UI, so it should work on any footage as long as the correct game (Remake, Rebirth, or Revelation) is specified — but please run `preview` on your own video before committing to a full render.
+- **Tested on Remake, Rebirth, and even Revelation footage** The detection keys on the game's own UI, so it should work on any footage as long as the correct game (Remake, Rebirth, or Revelation) is specified — but please run `preview` on your own video before committing to a full render.
 - **16:9 only.** Ultrawide/non-16:9 captures will warn and may misdetect (the HUD anchors differently).
 - **Custom HUD settings** (scale/opacity accessibility options) could shift the badge positions and break detection. Standard HUD is assumed.
 - **Pauses / loading / results screens** are static (never slow-motion), so they're correctly left alone — they'll appear at full length in the output.
