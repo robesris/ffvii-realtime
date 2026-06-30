@@ -15,7 +15,7 @@ import subprocess
 import numpy as np
 
 from . import badges
-from .ffmpeg_util import ffmpeg, probe
+from .ffmpeg_util import ffmpeg, probe, Cancelled
 
 # defaults
 THRESH = 0.48        # strong badge match (max of color/white/black)
@@ -82,11 +82,13 @@ def _bridge_frozen_gaps(ivs, ms, fps, start, max_gap, motion_thr):
 
 def detect(video, game="rebirth", thresh=None, l2_frozen=None, motion=MOTION,
            slow_cap=SLOW_CAP, nr2=NR2, merge_gap=MERGE_GAP, min_dur=MIN_DUR, lead=LEAD,
-           start=0.0, duration=None, progress=None):
+           start=0.0, duration=None, progress=None, cancel=None):
     """Scan `video`, return dict with intervals and metadata. `game` selects the
     HUD profile ('rebirth', 'remake', or 'revelation'). thresh/l2_frozen fall back
     to the profile's recommended values when None. start/duration limit the scan to
-    a section of the video (seconds); returned interval times are still absolute."""
+    a section of the video (seconds); returned interval times are still absolute.
+    cancel: optional threading.Event; if set mid-scan, the decode is stopped and
+    `Cancelled` is raised (the GUI's Cancel button)."""
     profile = badges.get_profile(game)
     if thresh is None:
         thresh = profile.thresh
@@ -122,6 +124,8 @@ def detect(video, game="rebirth", thresh=None, l2_frozen=None, motion=MOTION,
         buf = p1.stdout.read(fb)
         if len(buf) < fb:
             break
+        if cancel is not None and cancel.is_set():
+            p1.terminate(); raise Cancelled()
         band = np.frombuffer(buf, np.uint8).reshape(bh, bw, 3)
         l2s.append(profile.score_l2(band))
         r2s.append(profile.score_r2(band))
@@ -144,6 +148,8 @@ def detect(video, game="rebirth", thresh=None, l2_frozen=None, motion=MOTION,
             buf = pt.stdout.read(ftb)
             if len(buf) < ftb:
                 break
+            if cancel is not None and cancel.is_set():
+                pt.terminate(); raise Cancelled()
             tband = np.frombuffer(buf, np.uint8).reshape(th, tw, 3)
             tacs[k] = profile.score_tac(tband)
             k += 1
@@ -160,6 +166,8 @@ def detect(video, game="rebirth", thresh=None, l2_frozen=None, motion=MOTION,
         buf = p2.stdout.read(mb)
         if len(buf) < mb:
             break
+        if cancel is not None and cancel.is_set():
+            p2.terminate(); raise Cancelled()
         fr = np.frombuffer(buf, np.uint8).reshape(MOT_H, MOT_W).astype(np.int16)
         if prev is not None and j - 1 < idx:
             motion_v[j - 1] = float(np.abs(fr - prev).mean())

@@ -15,10 +15,9 @@ Works at any resolution (retiming is resolution-independent).
 import os
 import json
 import shutil
-import subprocess
 import tempfile
 
-from .ffmpeg_util import ffmpeg, probe
+from .ffmpeg_util import ffmpeg, probe, run_cancellable, Cancelled
 
 
 def atempo_chain(factor):
@@ -65,11 +64,13 @@ def _chunk_graph(segs, cs, factor, atempo, tac_vol):
 
 def render(video, intervals, out, factor=100.0, tac_vol=0.1, crf=18, preset="slow",
            chunk_secs=180.0, work_dir=None, keep_work=False, window=None, progress=None,
-           bridge_sound=True, bridge_width=0.35):
+           bridge_sound=True, bridge_width=0.35, cancel=None):
     """Render `video` -> `out` using `intervals` (list of {start,end}).
 
     window=(lo, hi) renders only that source span (used for previews); None = whole video.
     bridge_sound: replace the sped-up seam audio with a crossfade so it never cuts out.
+    cancel: optional threading.Event; if set mid-render, the current ffmpeg is killed
+    and `Cancelled` is raised (the GUI's Cancel button).
     """
     info = probe(video)
     fps = info["fps"]
@@ -93,6 +94,8 @@ def render(video, intervals, out, factor=100.0, tac_vol=0.1, crf=18, preset="slo
     paths = []
     try:
         for ci, chunk in enumerate(chunks):
+            if cancel is not None and cancel.is_set():
+                raise Cancelled()
             outp = os.path.join(work, f"c{ci:04d}.mp4")
             paths.append(outp)
             if os.path.exists(outp):                 # resume
@@ -107,15 +110,17 @@ def render(video, intervals, out, factor=100.0, tac_vol=0.1, crf=18, preset="slo
                    "-t", f"{target:.3f}", "-r", str(fps),
                    "-c:v", "libx264", "-crf", str(crf), "-preset", preset, "-pix_fmt", "yuv420p",
                    "-c:a", "aac", "-b:a", "192k", outp]
-            subprocess.run(cmd, check=True)
+            run_cancellable(cmd, cancel=cancel, check=True)
             if progress: progress(ci + 1, len(chunks), "done")
 
+        if cancel is not None and cancel.is_set():
+            raise Cancelled()
         listpath = os.path.join(work, "list.txt")
         with open(listpath, "w") as f:
             for p in paths:
                 f.write(f"file '{p}'\n")
-        subprocess.run([ffmpeg(), "-y", "-v", "error", "-f", "concat", "-safe", "0",
-                        "-i", listpath, "-c", "copy", out], check=True)
+        run_cancellable([ffmpeg(), "-y", "-v", "error", "-f", "concat", "-safe", "0",
+                         "-i", listpath, "-c", "copy", out], cancel=cancel, check=True)
         if bridge_sound:
             if progress: progress(len(chunks), len(chunks), "bridging audio")
             from .bridge import bridge_audio

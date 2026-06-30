@@ -19,6 +19,38 @@ import subprocess
 _HOME_BIN = os.path.expanduser("~/.ffvii-realtime/bin")
 
 
+class Cancelled(Exception):
+    """Raised when a cancellable run is aborted via its cancel event."""
+
+
+def run_cancellable(cmd, cancel=None, check=True, poll=0.2, **kw):
+    """Like subprocess.run, but if `cancel` (a threading.Event) becomes set while the
+    child runs, the child is terminated and `Cancelled` is raised. With cancel=None it
+    is a plain blocking run. Lets the GUI's Cancel button interrupt a long ffmpeg mid-run."""
+    if cancel is None:
+        return subprocess.run(cmd, check=check, **kw)
+    p = subprocess.Popen(cmd, **kw)
+    try:
+        while True:
+            try:
+                rc = p.wait(timeout=poll)
+                break
+            except subprocess.TimeoutExpired:
+                if cancel.is_set():
+                    p.terminate()
+                    try:
+                        p.wait(timeout=2)
+                    except subprocess.TimeoutExpired:
+                        p.kill()
+                    raise Cancelled()
+    finally:
+        if p.poll() is None:
+            p.kill()
+    if check and rc != 0:
+        raise subprocess.CalledProcessError(rc, cmd)
+    return p
+
+
 def _resolve(name, env):
     p = os.environ.get(env)
     if p and os.path.exists(p):

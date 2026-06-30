@@ -13,7 +13,7 @@ from urllib.parse import urlparse, parse_qs
 
 from .detect import detect, LEAD
 from .render import render
-from .ffmpeg_util import probe
+from .ffmpeg_util import probe, Cancelled
 
 try:
     from . import __version__ as VERSION
@@ -23,6 +23,7 @@ except Exception:
 STATE = {"running": False, "stage": "idle", "message": "", "pct": 0,
          "done": False, "output": None, "error": None, "log": []}
 _LOCK = threading.Lock()
+_CANCEL = threading.Event()   # set by /api/cancel to interrupt the running job
 
 
 def _set(**kw):
@@ -51,6 +52,7 @@ def _secs(s):
 
 def _job(path, factor, tac_vol, out, start=0.0, duration=None, lead=LEAD, bridge_sound=True,
          game="rebirth"):
+    _CANCEL.clear()
     try:
         _set(running=True, done=False, error=None, output=None, stage="detect",
              message="Scanning for Tactical Mode segments...", pct=2, log=[])
@@ -68,7 +70,8 @@ def _job(path, factor, tac_vol, out, start=0.0, duration=None, lead=LEAD, bridge
                 seen["stage"] = stage
                 _log(f"Scanning ({stage}) ...")
 
-        res = detect(path, game=game, start=start, duration=duration, lead=lead, progress=dprog)
+        res = detect(path, game=game, start=start, duration=duration, lead=lead,
+                     progress=dprog, cancel=_CANCEL)
         _set(stage="render", pct=32,
              message=f"Found {res['n_segments']} slow-mo segments. Rendering...")
         _log(f"Found {res['n_segments']} slow-mo segments, "
@@ -85,10 +88,20 @@ def _job(path, factor, tac_vol, out, start=0.0, duration=None, lead=LEAD, bridge
             window = (start, start + duration if duration else info["duration"])
         _log(f"Rendering -> {out} (factor {factor}x) ...")
         render(path, res["intervals"], out, factor=factor, tac_vol=tac_vol,
-                       window=window, progress=rprog, bridge_sound=bridge_sound)
+                       window=window, progress=rprog, bridge_sound=bridge_sound, cancel=_CANCEL)
         _set(running=False, done=True, stage="done", pct=100, output=out,
              message=f"Done! {res['n_segments']} segments sped up.")
         _log(f"Done -> {out}")
+    except Cancelled:
+        # remove any half-written output so a cancel never leaves a corrupt file behind
+        try:
+            if os.path.exists(out):
+                os.remove(out)
+        except OSError:
+            pass
+        _set(running=False, done=False, error=None, stage="cancelled", pct=0,
+             message="Cancelled.")
+        _log("Cancelled.")
     except Exception as e:
         _set(running=False, done=False, error=str(e), stage="error",
              message=f"Error: {e}")
@@ -189,6 +202,7 @@ a.dl{display:inline-block;margin-top:14px}
 <label>Output file (optional)</label>
 <input id="out" placeholder="(defaults to <input>.realtime.mp4)">
 <button id="go" onclick="run()">Start</button>
+<button id="cancel" onclick="cancel()" style="display:none;background:#b03a3a;margin-left:10px">Cancel</button>
 <div id="bar"><div id="fill"></div></div>
 <div id="msg"></div>
 <pre id="log"></pre>
@@ -210,8 +224,10 @@ async function run(){
     end:document.getElementById('end').value.trim(),
     out:document.getElementById('out').value.trim()};
   const go=document.getElementById('go'), bar=document.getElementById('bar');
-  const stop=m=>{go.disabled=false;bar.style.display='none';msg.textContent=m;};
+  const cancelBtn=document.getElementById('cancel');
+  const stop=m=>{go.disabled=false;cancelBtn.style.display='none';bar.style.display='none';msg.textContent=m;};
   go.disabled=true; bar.style.display='block'; document.getElementById('result').innerHTML='';
+  cancelBtn.style.display='inline-block'; cancelBtn.disabled=false; cancelBtn.textContent='Cancel';
   const post=p=>fetch('/api/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)});
   let r=await post(payload);
   if(r.status===409){
@@ -225,6 +241,11 @@ async function run(){
   }
   if(!r.ok){ const j=await r.json().catch(()=>({})); stop(j.error||('Error '+r.status)); return; }
   timer=setInterval(poll,1000);
+}
+async function cancel(){
+  const c=document.getElementById('cancel');
+  c.disabled=true; c.textContent='Cancelling…';
+  try{ await fetch('/api/cancel',{method:'POST'}); }catch(e){}
 }
 const $=id=>document.getElementById(id);
 async function pick(){
@@ -269,7 +290,10 @@ async function poll(){
     const atBottom=L.scrollHeight-L.scrollTop-L.clientHeight<30;
     L.style.display='block';L.textContent=s.log.join(String.fromCharCode(10));
     if(atBottom)L.scrollTop=L.scrollHeight;}
-  if(s.done||s.error){clearInterval(timer);document.getElementById('go').disabled=false;
+  const finished=s.done||s.error||s.stage==='cancelled';
+  if(finished){clearInterval(timer);
+    document.getElementById('go').disabled=false;
+    document.getElementById('cancel').style.display='none';
     if(s.done){const out=s.output,res=document.getElementById('result');
       res.textContent='Saved to ';
       const a=document.createElement('a');a.href='#';a.className='dl';a.textContent=out;
@@ -321,6 +345,15 @@ class Handler(BaseHTTPRequestHandler):
             self._send(404, json.dumps({"error": "not found"}))
 
     def do_POST(self):
+        if urlparse(self.path).path == "/api/cancel":
+            with _LOCK:
+                running = STATE["running"]
+            if running:
+                _CANCEL.set()
+                self._send(200, json.dumps({"ok": True}))
+            else:
+                self._send(409, json.dumps({"error": "not running"}))
+            return
         if urlparse(self.path).path == "/api/run":
             n = int(self.headers.get("Content-Length", 0))
             req = json.loads(self.rfile.read(n) or "{}")
