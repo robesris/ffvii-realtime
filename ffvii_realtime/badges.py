@@ -40,6 +40,19 @@ def black_mask(bgr, thr):
     return (cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY) < thr).astype(np.float32)
 
 
+def teal_mask(bgr):
+    """Isolate the bright teal of the 'Tactical Mode' header glyphs, independent of
+    background. Color/white-mask matching of that text collapses over a blown-out
+    background (e.g. the Colosseum's bright billboards) because they correlate the
+    whole patch; the glyphs' distinctive teal does not, so masking to it and matching
+    the glyph SHAPE stays robust. Teal = green and blue both bright and clearly above
+    red."""
+    b = bgr[:, :, 0].astype(np.int16)
+    g = bgr[:, :, 1].astype(np.int16)
+    r = bgr[:, :, 2].astype(np.int16)
+    return ((g > 120) & (b > 110) & (g - r > 25) & (b - r > 10)).astype(np.float32)
+
+
 def _best(roi, templates):
     return max(float(cv2.matchTemplate(roi, t, cv2.TM_CCOEFF_NORMED).max()) for t in templates)
 
@@ -117,8 +130,9 @@ class Profile:
         if tac_band is not None:
             self.tac_col = [_load(tpl_subdir, "tac_a.png"), _load(tpl_subdir, "tac_b.png")]
             self.tac_wht = [white_mask(t, white_thr) for t in self.tac_col]
+            self.tac_teal = [teal_mask(t) for t in self.tac_col]
         else:
-            self.tac_col = self.tac_wht = None
+            self.tac_col = self.tac_wht = self.tac_teal = None
 
     def _score(self, band, sub, col, wht, blk):
         x, y, w, h = sub
@@ -147,15 +161,22 @@ class Profile:
 
     def score_tac(self, tac_band):
         """Match the 'Tactical Mode' header text in its top-left band. 0.0 if the
-        profile has no tac band. Scored as max(color, guarded white-mask) so a busy
-        or bright background behind the text can't defeat it."""
+        profile has no tac band. Scored as max(color, guarded white-mask, guarded
+        teal-mask): color/white handle ordinary backgrounds, the teal mask rescues
+        blown-out bright backgrounds where the first two collapse."""
         if self.tac_col is None:
             return 0.0
         x, y, w, h = self.TAC_SUB
         roi = tac_band[y:y + h, x:x + w]
         c = _best(roi, self.tac_col)
         m = _best_guarded(white_mask(roi, self.white_thr), self.tac_wht)
-        return max(c, m)
+        # The teal text glyphs cover only ~6% of the band. A teal *background* (e.g.
+        # bright water) floods far more of it; if teal coverage is implausibly large
+        # it's scenery, not text, so don't trust the teal-mask match (which could
+        # otherwise correlate a watery pattern with the glyph shape).
+        tm = teal_mask(roi)
+        tl = _best_guarded(tm, self.tac_teal) if float(tm.mean()) < 0.30 else 0.0
+        return max(c, m, tl)
 
 
 # Rebirth: white-on-black badges, R2 far-right, lower-left normal menu -> needs veto.
