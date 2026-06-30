@@ -72,6 +72,17 @@ def _job(path, factor, tac_vol, out, start=0.0, duration=None, lead=LEAD, bridge
 
         res = detect(path, game=game, start=start, duration=duration, lead=lead,
                      progress=dprog, cancel=_CANCEL)
+
+        # No Tactical Mode found -> nothing to speed up; don't render (the output would
+        # just be a copy). Stop here with an actionable message instead.
+        if res["n_segments"] == 0:
+            msg = ("No Tactical Mode segments found — nothing to speed up, so no file was "
+                   "written. Make sure the Game above matches your footage (the wrong "
+                   "game finds 0 segments).")
+            _set(running=False, done=True, stage="empty", pct=100, output=None, message=msg)
+            _log(msg)
+            return
+
         _set(stage="render", pct=32,
              message=f"Found {res['n_segments']} slow-mo segments. Rendering...")
         _log(f"Found {res['n_segments']} slow-mo segments, "
@@ -294,7 +305,7 @@ async function poll(){
   if(finished){clearInterval(timer);
     document.getElementById('go').disabled=false;
     document.getElementById('cancel').style.display='none';
-    if(s.done){const out=s.output,res=document.getElementById('result');
+    if(s.done&&s.output){const out=s.output,res=document.getElementById('result');
       res.textContent='Saved to ';
       const a=document.createElement('a');a.href='#';a.className='dl';a.textContent=out;
       a.title='Click to reveal in your file browser';

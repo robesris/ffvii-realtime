@@ -104,6 +104,19 @@ def _progress_render(i, total, status):
     print(f"  chunk {i}/{total} {status}", file=sys.stderr)
 
 
+def _abort_if_empty(res):
+    """No Tactical Mode segments -> nothing to speed up, so don't render (the output
+    would just be a copy of the input). Exit with a clear, actionable message."""
+    if res.get("n_segments", 0) == 0:
+        sys.stderr.write(
+            "No Tactical Mode segments detected — nothing to speed up, so no video was "
+            "written.\n"
+            "  - Check that --game matches your footage (rebirth/remake/revelation); "
+            "the wrong game finds 0 segments.\n"
+            "  - If you passed --range, make sure that span actually contains Tactical Mode.\n")
+        raise SystemExit(3)
+
+
 def _guard_out(out, force):
     """Refuse to clobber an existing output unless --force was given."""
     if os.path.exists(out) and not force:
@@ -195,6 +208,7 @@ def main(argv=None):
         out = args.out or os.path.splitext(args.input)[0] + ".realtime.mp4"
         _guard_out(out, args.force)
         res, ipath = _run_detect(args)
+        _abort_if_empty(res)
         _, _, window = _range_args(args)
         print(f"Rendering -> {out} (factor {args.factor}x) ...", file=sys.stderr)
         render(args.input, res["intervals"], out, factor=args.factor,
@@ -219,6 +233,7 @@ def main(argv=None):
         _guard_out(out, args.force)
         # detect only the window (fast), then render it; interval times are absolute
         res, _ = _run_detect(args)
+        _abort_if_empty(res)
         _, _, window = _range_args(args)
         render(args.input, res["intervals"], out, factor=args.factor, tac_vol=args.tac_vol,
                        crf=args.crf, preset=args.preset, window=window,
