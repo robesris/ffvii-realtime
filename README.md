@@ -6,6 +6,10 @@
 
 **Remove Tactical Mode slow-motion from Final Fantasy VII Rebirth combat captures so the whole fight plays at uniform real-time speed.**
 
+![FFVII Realtime demo: Tactical Mode slow-motion sped up to real time](https://raw.githubusercontent.com/robesris/ffvii-realtime/main/assets/demo.gif)
+
+*The clip first plays as captured — Aerith picking a command in Tactical Mode slow-motion — then, after the flash, the same moment at real-time speed with the spell firing off. ([higher-quality MP4](https://github.com/robesris/ffvii-realtime/raw/main/assets/demo.mp4))*
+
 In Rebirth, opening the Tactical Mode command menu drops the game into heavy slow-motion (apparently 100x slower than real-time) while you pick your actions. It's great to play, but these pauses, especially long ones, aren't much fun to watch in a recording. FFVII Realtime automatically finds those slow-motion segments and speeds only them back up, leaving the rest of the fight untouched, so the whole thing flows at one natural pace.
 
 > Example: a 1:55:00 capture became ~1:07:00 of continuous, full-speed combat — ~700 Tactical Mode segments detected and sped up, fully audio-synced.
