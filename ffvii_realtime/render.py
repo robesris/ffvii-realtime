@@ -45,21 +45,29 @@ def build_segments(intervals, lo, hi):
     return [s for s in segs if s[1] - s[0] > 1e-3]
 
 
-def _chunk_graph(segs, cs, factor, atempo, tac_vol):
-    vl, al, ins = [], [], []
+def _video_graph(segs, cs, factor):
+    vl, vin = [], []
+    for i, (a, b, tac) in enumerate(segs):
+        a, b = a - cs, b - cs
+        pts = f"(PTS-STARTPTS)/{factor}" if tac else "PTS-STARTPTS"
+        vl.append(f"[0:v]trim={a:.3f}:{b:.3f},setpts={pts}[v{i}];")
+        vin.append(f"[v{i}]")
+    return "\n".join(vl + ["".join(vin) + f"concat=n={len(segs)}:v=1:a=0[v]"])
+
+
+def _audio_graph(segs, cs, factor, atempo, tac_vol):
+    al, ain = [], []
     for i, (a, b, tac) in enumerate(segs):
         a, b = a - cs, b - cs
         if tac:
-            vl.append(f"[0:v]trim={a:.3f}:{b:.3f},setpts=(PTS-STARTPTS)/{factor}[v{i}];")
             vol = f",volume={tac_vol}" if abs(tac_vol - 1.0) > 1e-9 else ""
             al.append(f"[0:a]atrim={a:.3f}:{b:.3f},asetpts=PTS-STARTPTS,{atempo}{vol}[a{i}];")
         else:
-            vl.append(f"[0:v]trim={a:.3f}:{b:.3f},setpts=PTS-STARTPTS[v{i}];")
             al.append(f"[0:a]atrim={a:.3f}:{b:.3f},asetpts=PTS-STARTPTS[a{i}];")
-        ins.append(f"[v{i}][a{i}]")
-    n = len(segs)
-    cat = "".join(ins) + f"concat=n={n}:v=1:a=1[v][a0];[a0]apad[a]"
-    return "\n".join(vl + al + [cat])
+        ain.append(f"[a{i}]")
+    # apad + the caller's output -t pins audio to exactly the chunk's video length, so
+    # no a/v drift accumulates across the concatenated chunks.
+    return "\n".join(al + ["".join(ain) + f"concat=n={len(segs)}:v=0:a=1[ac];[ac]apad[a]"])
 
 
 def render(video, intervals, out, factor=100.0, tac_vol=0.1, crf=18, preset="slow",
@@ -103,14 +111,27 @@ def render(video, intervals, out, factor=100.0, tac_vol=0.1, crf=18, preset="slo
                 continue
             cs, ce = chunk[0][0], chunk[-1][1]
             target = sum((b - a) if not t else (b - a) / factor for a, b, t in chunk)
+            seek = ["-ss", f"{cs:.3f}", "-t", f"{ce - cs + 1.0:.3f}", "-i", video]
+            # Render video and audio in SEPARATE passes, then mux. A single graph that
+            # produces both [v] and [a] from one input deadlocks when a chunk mixes long
+            # 1x segments with heavily sped-up ones: the two output streams advance at
+            # wildly different rates and ffmpeg's interleaver stalls forever. Each stream
+            # alone is fine, so we build them independently and join with -c copy.
+            vtmp, atmp = outp[:-4] + "_v.mp4", outp[:-4] + "_a.m4a"
             with open(graphpath, "w") as f:
-                f.write(_chunk_graph(chunk, cs, factor, atempo, tac_vol))
-            cmd = [ffmpeg(), "-y", "-v", "error", "-ss", f"{cs:.3f}", "-t", f"{ce - cs + 1.0:.3f}",
-                   "-i", video, "-/filter_complex", graphpath, "-map", "[v]", "-map", "[a]",
-                   "-t", f"{target:.3f}", "-r", str(fps),
-                   "-c:v", "libx264", "-crf", str(crf), "-preset", preset, "-pix_fmt", "yuv420p",
-                   "-c:a", "aac", "-b:a", "192k", outp]
-            run_cancellable(cmd, cancel=cancel, check=True)
+                f.write(_video_graph(chunk, cs, factor))
+            run_cancellable([ffmpeg(), "-y", "-v", "error", *seek, "-/filter_complex", graphpath,
+                             "-map", "[v]", "-an", "-t", f"{target:.3f}", "-r", str(fps),
+                             "-c:v", "libx264", "-crf", str(crf), "-preset", preset,
+                             "-pix_fmt", "yuv420p", vtmp], cancel=cancel, check=True)
+            with open(graphpath, "w") as f:
+                f.write(_audio_graph(chunk, cs, factor, atempo, tac_vol))
+            run_cancellable([ffmpeg(), "-y", "-v", "error", *seek, "-/filter_complex", graphpath,
+                             "-map", "[a]", "-vn", "-t", f"{target:.3f}",
+                             "-c:a", "aac", "-b:a", "192k", atmp], cancel=cancel, check=True)
+            run_cancellable([ffmpeg(), "-y", "-v", "error", "-i", vtmp, "-i", atmp,
+                             "-map", "0:v", "-map", "1:a", "-c", "copy", outp], cancel=cancel, check=True)
+            os.remove(vtmp); os.remove(atmp)
             if progress: progress(ci + 1, len(chunks), "done")
 
         if cancel is not None and cancel.is_set():
