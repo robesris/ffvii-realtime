@@ -204,7 +204,12 @@ def detect(video, game="rebirth", thresh=None, l2_frozen=None, motion=MOTION,
         # text match bypasses the motion gate (like `confident` for badges), to ride
         # through bright effects that would inflate the motion proxy.
         tac = tacs[i] > profile.tac_thr and (ms[i] < slow_cap or tacs[i] > profile.tac_conf)
-        normal_menu = nr2s[i] > nr2   # R2 at the normal-menu position -> not Tactical
+        # The normal "Issue Commands to Allies" menu also shows an R2 badge, so an R2
+        # match at that position vetoes a Tactical hit -- UNLESS the "Tactical Mode"
+        # header text is clearly present, which the normal menu never shows. That text
+        # is the authoritative discriminator, so it immunizes against the veto (which
+        # otherwise false-fires on the party character-switcher over bright backgrounds).
+        normal_menu = nr2s[i] > nr2 and tacs[i] <= profile.tac_thr
         flags.append((strong or confident or frozen or tac) and not normal_menu)
 
     ivs = _intervals(flags, fps, merge_gap, min_dur, lead, t0=start)
