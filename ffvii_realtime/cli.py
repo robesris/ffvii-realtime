@@ -105,11 +105,11 @@ def _progress_render(i, total, status):
 
 
 def _abort_if_empty(res):
-    """No Tactical Mode segments -> nothing to speed up, so don't render (the output
-    would just be a copy of the input). Exit with a clear, actionable message."""
+    """Nothing detected means nothing to speed up, so skip the render (it would just
+    copy the input) and exit with an actionable message."""
     if res.get("n_segments", 0) == 0:
         sys.stderr.write(
-            "No Tactical Mode segments detected — nothing to speed up, so no video was "
+            "No Tactical Mode segments detected; nothing to speed up, so no video was "
             "written.\n"
             "  - Check that --game matches your footage (rebirth/remake/revelation); "
             "the wrong game finds 0 segments.\n"
@@ -189,14 +189,14 @@ def main(argv=None):
 
     args = ap.parse_args(argv)
 
-    # validate the input path up front with a clear message (a common gotcha is a
-    # pasted path that wrapped in the terminal, embedding a newline)
+    # check the input path up front; a common gotcha is a pasted path that wrapped in
+    # the terminal and picked up a newline
     if getattr(args, "input", None) is not None:
         args.input = args.input.strip()
         if not os.path.isfile(args.input):
             hint = ""
             if "\n" in args.input:
-                hint = ("  (the path contains a line break — re-enter it on one line, "
+                hint = ("  (the path has a line break in it; re-enter it on one line, "
                         "or drag the file into the terminal)")
             sys.stderr.write("Error: no such file: %r%s\n" % (args.input, hint))
             raise SystemExit(2)

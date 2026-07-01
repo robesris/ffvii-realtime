@@ -1,15 +1,12 @@
-"""Detect Tactical Mode (slow-motion) segments in an FFVII Rebirth capture.
+"""Find the Tactical Mode (slow-motion) segments in a capture.
 
-Two passes over the video:
-  1. Badge pass  - normalize each frame to 1920x1080, crop the badge band, score L2/R2.
-  2. Motion pass - downscaled gray frames, mean abs diff between consecutive frames.
+Two passes over the video: a badge pass (scale each frame to 1080p, crop the badge
+band, score L2/R2) and a motion pass (mean abs diff between downscaled gray frames).
+A frame counts as Tactical if the badges match strongly, or the menu is up and the
+scene is nearly frozen (the badge hasn't slid in yet or is washed out).
 
-A frame is Tactical if the badge match is strong, OR the menu (L2) is present and
-the scene is nearly frozen (the slow-motion is underway but the badge hasn't fully
-slid in / is washed out by a busy background).
-
-Segments are merged across brief gaps, short blips dropped, and each segment's
-START is extended by `lead` to cover the panel's slide-in animation.
+Runs of Tactical frames become intervals: merged across short gaps, tiny blips
+dropped, and each start nudged earlier by `lead` to cover the panel slide-in.
 """
 import subprocess
 import numpy as np
@@ -21,10 +18,10 @@ from .ffmpeg_util import ffmpeg, probe, Cancelled
 THRESH = 0.48        # strong badge match (max of color/white/black)
 L2_FROZEN = 0.55     # L2 present, for the frozen clause
 MOTION = 1.5         # "frozen" if mean frame-diff below this
-SLOW_CAP = 6.0       # Tactical is slow-mo: reject high-motion frames even if the
-                     # badge matches (guards against fluke matches during fast action)
-NR2 = 0.50           # veto: reject frames where R2 matches the NORMAL-menu position
-                     # (the normal "Issue Commands to Allies" menu, not Tactical)
+SLOW_CAP = 6.0       # reject high-motion frames even if the badge matches; Tactical
+                     # is slow, so a match during fast action is a fluke
+NR2 = 0.50           # veto: R2 matching the normal-menu position ("Issue Commands to
+                     # Allies") means we're not in Tactical Mode
 MERGE_GAP = 0.5      # merge segments separated by less than this (s)
 MIN_DUR = 0.2        # drop segments shorter than this (s)
 LEAD = 0.2           # extend each segment start earlier (panel slide-in)
@@ -60,10 +57,9 @@ def _intervals(flags, fps, merge_gap, min_dur, lead, t0=0.0):
 
 
 def _bridge_frozen_gaps(ivs, ms, fps, start, max_gap, motion_thr):
-    """Fill near-frozen gaps between consecutive detected segments. A slow-motion
-    gap bracketed by Tactical on both sides is almost certainly the same menu with
-    the badges momentarily unreadable (e.g. a white-flash whiteout); real-time
-    action is never frozen for that long."""
+    """Fill near-frozen gaps between consecutive segments. A slow-motion gap with
+    Tactical on both sides is almost always the same menu with the badges briefly
+    unreadable (a white flash); real-time action is never frozen that long."""
     if not ivs or max_gap <= 0:
         return ivs
     ms = np.asarray(ms, np.float32)
@@ -80,6 +76,85 @@ def _bridge_frozen_gaps(ivs, ms, fps, start, max_gap, motion_thr):
     return [(round(a, 3), round(b, 3)) for a, b in out]
 
 
+def _check_cancel(cancel, proc):
+    if cancel is not None and cancel.is_set():
+        proc.terminate()
+        raise Cancelled()
+
+
+def _scan_badges(pipe, profile, cancel, progress):
+    """Pass 1: score L2/R2 and the normal-menu veto on each frame's badge band."""
+    bx, by, bw, bh = profile.BAND
+    proc = pipe(f"scale={badges.REF_W}:{badges.REF_H},crop={bw}:{bh}:{bx}:{by}", "bgr24")
+    fb = bw * bh * 3
+    l2s, r2s, nr2s = [], [], []
+    while True:
+        buf = proc.stdout.read(fb)
+        if len(buf) < fb:
+            break
+        _check_cancel(cancel, proc)
+        band = np.frombuffer(buf, np.uint8).reshape(bh, bw, 3)
+        l2s.append(profile.score_l2(band))
+        r2s.append(profile.score_r2(band))
+        nr2s.append(profile.score_nr2(band))
+        if progress and len(l2s) % 10000 == 0:
+            progress("badges", len(l2s))
+    proc.wait()
+    return l2s, r2s, nr2s
+
+
+def _scan_tac_text(pipe, profile, n, cancel, progress):
+    """Pass 1b: score the 'Tactical Mode' header text, aligned with the n badge
+    frames. All-zeros if the profile has no tac band."""
+    tacs = [0.0] * n
+    if profile.TAC_BAND is None:
+        return tacs
+    tx, ty, tw, th = profile.TAC_BAND
+    proc = pipe(f"scale={badges.REF_W}:{badges.REF_H},crop={tw}:{th}:{tx}:{ty}", "bgr24")
+    ftb = tw * th * 3
+    k = 0
+    while k < n:
+        buf = proc.stdout.read(ftb)
+        if len(buf) < ftb:
+            break
+        _check_cancel(cancel, proc)
+        tband = np.frombuffer(buf, np.uint8).reshape(th, tw, 3)
+        tacs[k] = profile.score_tac(tband)
+        k += 1
+        if progress and k % 10000 == 0:
+            progress("tactical-text", k)
+    proc.wait()
+    return tacs
+
+
+def _scan_motion(pipe, n, cancel, progress):
+    """Pass 2: mean abs frame-diff on downscaled gray frames, then a windowed-mean
+    smooth. slow-mo is sustained low motion, whereas juddery fast action (near-dup
+    frames during a camera swing) alternates low/high and averages high, so a
+    per-frame test would trip on those dips."""
+    proc = pipe(f"scale={MOT_W}:{MOT_H}", "gray")
+    mb = MOT_W * MOT_H
+    motion_v = [0.0] * n
+    prev, j = None, 0
+    while True:
+        buf = proc.stdout.read(mb)
+        if len(buf) < mb:
+            break
+        _check_cancel(cancel, proc)
+        fr = np.frombuffer(buf, np.uint8).reshape(MOT_H, MOT_W).astype(np.int16)
+        if prev is not None and j - 1 < n:
+            motion_v[j - 1] = float(np.abs(fr - prev).mean())
+        prev = fr; j += 1
+        if progress and j % 10000 == 0:
+            progress("motion", j)
+    proc.wait()
+    if n >= 2:
+        motion_v[n - 1] = motion_v[n - 2]
+    if not n:
+        return motion_v
+    return np.convolve(np.asarray(motion_v, np.float32), np.ones(9) / 9, mode="same").tolist()
+
+
 def detect(video, game="rebirth", thresh=None, l2_frozen=None, motion=MOTION,
            slow_cap=SLOW_CAP, nr2=NR2, merge_gap=MERGE_GAP, min_dur=MIN_DUR, lead=LEAD,
            start=0.0, duration=None, progress=None, cancel=None):
@@ -87,8 +162,8 @@ def detect(video, game="rebirth", thresh=None, l2_frozen=None, motion=MOTION,
     HUD profile ('rebirth', 'remake', or 'revelation'). thresh/l2_frozen fall back
     to the profile's recommended values when None. start/duration limit the scan to
     a section of the video (seconds); returned interval times are still absolute.
-    cancel: optional threading.Event; if set mid-scan, the decode is stopped and
-    `Cancelled` is raised (the GUI's Cancel button)."""
+    If `cancel` (a threading.Event) is set mid-scan, decoding stops and Cancelled is
+    raised."""
     profile = badges.get_profile(game)
     if thresh is None:
         thresh = profile.thresh
@@ -115,84 +190,16 @@ def detect(video, game="rebirth", thresh=None, l2_frozen=None, motion=MOTION,
              "-f", "rawvideo", "-pix_fmt", pix, "-"],
             stdout=subprocess.PIPE, bufsize=10 ** 8)
 
-    # pass 1: badges (normalize to 1080p, crop the band)
-    bx, by, bw, bh = profile.BAND
-    p1 = pipe(f"scale={badges.REF_W}:{badges.REF_H},crop={bw}:{bh}:{bx}:{by}", "bgr24")
-    fb = bw * bh * 3
-    l2s, r2s, nr2s, idx = [], [], [], 0
-    while True:
-        buf = p1.stdout.read(fb)
-        if len(buf) < fb:
-            break
-        if cancel is not None and cancel.is_set():
-            p1.terminate(); raise Cancelled()
-        band = np.frombuffer(buf, np.uint8).reshape(bh, bw, 3)
-        l2s.append(profile.score_l2(band))
-        r2s.append(profile.score_r2(band))
-        nr2s.append(profile.score_nr2(band))  # normal-menu R2 (veto; 0 if profile has none)
-        idx += 1
-        if progress and idx % 10000 == 0:
-            progress("badges", idx)
-    p1.wait()
-
-    # pass 1b: "Tactical Mode" header text (optional; rescues solo boss fights that
-    # have no party and so never show the L2/R2 allies prompt). Decoded as its own
-    # small top-left band, scored per frame, OR'd into the flags below.
-    tacs = [0.0] * idx
-    if profile.TAC_BAND is not None:
-        tx, ty, tw, th = profile.TAC_BAND
-        pt = pipe(f"scale={badges.REF_W}:{badges.REF_H},crop={tw}:{th}:{tx}:{ty}", "bgr24")
-        ftb = tw * th * 3
-        k = 0
-        while k < idx:
-            buf = pt.stdout.read(ftb)
-            if len(buf) < ftb:
-                break
-            if cancel is not None and cancel.is_set():
-                pt.terminate(); raise Cancelled()
-            tband = np.frombuffer(buf, np.uint8).reshape(th, tw, 3)
-            tacs[k] = profile.score_tac(tband)
-            k += 1
-            if progress and k % 10000 == 0:
-                progress("tactical-text", k)
-        pt.wait()
-
-    # pass 2: motion
-    p2 = pipe(f"scale={MOT_W}:{MOT_H}", "gray")
-    mb = MOT_W * MOT_H
-    motion_v = [0.0] * idx
-    prev, j = None, 0
-    while True:
-        buf = p2.stdout.read(mb)
-        if len(buf) < mb:
-            break
-        if cancel is not None and cancel.is_set():
-            p2.terminate(); raise Cancelled()
-        fr = np.frombuffer(buf, np.uint8).reshape(MOT_H, MOT_W).astype(np.int16)
-        if prev is not None and j - 1 < idx:
-            motion_v[j - 1] = float(np.abs(fr - prev).mean())
-        prev = fr; j += 1
-        if progress and j % 10000 == 0:
-            progress("motion", j)
-    p2.wait()
-    if idx >= 2:
-        motion_v[idx - 1] = motion_v[idx - 2]
-
-    # Smooth motion with a windowed mean. Real slow-mo is SUSTAINED low motion; fast
-    # action that judders (near-duplicate frame pairs, e.g. a camera swing during a
-    # character switch) alternates low/high and averages high. Judging "slow" per-frame
-    # let the low-diff duplicate frames trip the frozen clause -> false positives.
-    if idx:
-        k = 9
-        ms = np.convolve(np.asarray(motion_v, np.float32), np.ones(k) / k, mode="same").tolist()
-    else:
-        ms = motion_v
+    l2s, r2s, nr2s = _scan_badges(pipe, profile, cancel, progress)
+    idx = len(l2s)
+    tacs = _scan_tac_text(pipe, profile, idx, cancel, progress)
+    ms = _scan_motion(pipe, idx, cancel, progress)
 
     flags = []
     for i in range(idx):
         strong = r2s[i] > thresh and l2s[i] > thresh and ms[i] < slow_cap
-        # both badges match strongly -> Tactical regardless of motion (rescues
-        # summon/flash frames where bright effects inflate the motion proxy)
+        # both badges very strong: Tactical no matter the motion, for summon/flash
+        # frames where bright effects inflate the motion proxy
         confident = l2s[i] > profile.conf_l2 and r2s[i] > profile.conf_r2
         if profile.frozen_mode == "both":
             frozen = l2s[i] > l2_frozen and r2s[i] > l2_frozen and ms[i] < motion
@@ -200,15 +207,13 @@ def detect(video, game="rebirth", thresh=None, l2_frozen=None, motion=MOTION,
             frozen = False
         else:  # 'l2': menu up (L present) and scene frozen
             frozen = l2s[i] > l2_frozen and ms[i] < motion
-        # "Tactical Mode" header text present and the scene is slow-mo. A very strong
-        # text match bypasses the motion gate (like `confident` for badges), to ride
-        # through bright effects that would inflate the motion proxy.
+        # header text present and the scene slow-mo. a very strong text match skips the
+        # motion gate, same idea as `confident` above.
         tac = tacs[i] > profile.tac_thr and (ms[i] < slow_cap or tacs[i] > profile.tac_conf)
-        # The normal "Issue Commands to Allies" menu also shows an R2 badge, so an R2
-        # match at that position vetoes a Tactical hit -- UNLESS the "Tactical Mode"
-        # header text is clearly present, which the normal menu never shows. That text
-        # is the authoritative discriminator, so it immunizes against the veto (which
-        # otherwise false-fires on the party character-switcher over bright backgrounds).
+        # the normal menu also shows an R2 badge, so an R2 match there vetoes a hit -
+        # but the normal menu never shows the "Tactical Mode" text, so a clear text
+        # match overrides the veto (which otherwise trips on the party switcher over
+        # bright backgrounds).
         normal_menu = nr2s[i] > nr2 and tacs[i] <= profile.tac_thr
         flags.append((strong or confident or frozen or tac) and not normal_menu)
 

@@ -38,4 +38,4 @@ ffvii-realtime = "ffvii_realtime.cli:main"
 packages = ["ffvii_realtime"]
 
 [tool.setuptools.package-data]
-ffvii_realtime = ["templates/*.png", "templates/*/*.png"]
+ffvii_realtime = ["gui.html", "templates/*.png", "templates/*/*.png"]
