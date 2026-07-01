@@ -1,0 +1,161 @@
+<!doctype html><html><head><meta charset="utf-8">
+<title>FFVII Realtime</title><style>
+body{font:15px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;max-width:680px;margin:40px auto;padding:0 20px;color:#222}
+h1{font-size:22px} .sub{color:#666;margin-top:-8px}
+.ver{font-size:13px;color:#999;font-weight:400}
+label{display:block;margin:14px 0 4px;font-weight:600}
+input:not([type=checkbox]):not([type=radio]){width:100%;padding:8px;border:1px solid #ccc;border-radius:6px;box-sizing:border-box}
+input[type=checkbox],input[type=radio]{width:auto;margin:0 8px 0 0;vertical-align:middle}
+label.check{font-weight:600;display:flex;align-items:center}
+.radio{display:block;font-weight:400;margin:8px 0 0}
+#vol{width:64px;padding:5px 7px;vertical-align:middle}
+#vol:disabled{background:#f3f3f3;color:#aaa}
+.row{display:flex;gap:14px}.row>div{flex:1}
+button{margin-top:18px;padding:10px 18px;font-size:15px;border:0;border-radius:6px;background:#2b6cb0;color:#fff;cursor:pointer}
+button:disabled{background:#9bb}
+#bar{height:14px;background:#eee;border-radius:7px;overflow:hidden;margin-top:18px;display:none}
+#fill{height:100%;width:0;background:#2b6cb0;transition:width .4s}
+#msg{margin-top:10px;color:#444;min-height:20px}
+.note{font-size:13px;color:#777;margin-top:6px}
+select{width:100%;padding:8px;border:1px solid #ccc;border-radius:6px;box-sizing:border-box;background:#fff}
+.drop{display:flex;gap:8px;align-items:stretch}
+.drop input{flex:1;width:auto}
+.browse{margin-top:0;padding:8px 14px;font-size:14px;background:#555;white-space:nowrap}
+.drop.drag{outline:2px dashed #2b6cb0;outline-offset:4px;border-radius:8px;background:#eef5ff}
+#log{margin-top:14px;background:#1e1e1e;color:#d4d4d4;font:12px/1.45 ui-monospace,Menlo,Consolas,monospace;padding:10px 12px;border-radius:6px;height:170px;overflow:auto;white-space:pre-wrap;display:none}
+a.dl{display:inline-block;margin-top:14px}
+</style></head><body>
+<h1>FFVII Realtime <span class="ver">v__FFVII_VERSION__</span></h1>
+<p class="sub">Speeds up Final Fantasy VII Rebirth Tactical Mode slow-motion so the fight plays in real time.</p>
+<label>Video file</label>
+<div id="drop" class="drop">
+  <input id="path" placeholder="/Users/you/Movies/my-fight.mp4">
+  <button type="button" id="browse" class="browse" onclick="pick()">Browse&hellip;</button>
+</div>
+<div class="note">Drag a video onto this box, click <b>Browse&hellip;</b>, or paste its full path. The file stays on your computer &mdash; it isn't uploaded.</div>
+<label>Game</label>
+<select id="game">
+  <option value="remake">Final Fantasy VII Remake</option>
+  <option value="rebirth" selected>Final Fantasy VII Rebirth</option>
+  <option value="revelation">Final Fantasy VII Revelation</option>
+</select>
+<div class="note">Which game's HUD to detect &mdash; <b>you must pick the one your footage is from</b>, or detection finds 0 segments. Defaults to Rebirth.</div>
+<div class="row">
+  <div><label>Speed-up factor</label><input id="factor" type="number" value="100" min="2" step="1">
+    <div class="note">100 = default in-game slowdown. Different if you're using a Tactical Mode slowdown setting other than the default. Know the real factor for any setting? Please <a href="https://github.com/robesris/ffvii-realtime/issues" target="_blank" rel="noopener">open an issue</a>.</div></div>
+  <div><label>Lead-in (seconds)</label><input id="lead" type="number" value="0.2" min="0" step="0.05">
+    <div class="note">Start the speed-up this many seconds before the menu is detected, to cover the panel slide-in.</div></div>
+</div>
+<div class="row">
+  <div><label>Start (optional)</label><input id="start" placeholder="0:00">
+    <div class="note">Process only from here, e.g. 24:00. Blank = beginning.</div></div>
+  <div><label>End (optional)</label><input id="end" placeholder="(end of video)">
+    <div class="note">Process only up to here, e.g. 26:30. Blank = end.</div></div>
+</div>
+<label>Sped-up audio</label>
+<label class="radio"><input type="radio" name="audio" value="smooth" checked onclick="audioMode()"> Smooth it across the sped-up sections &mdash; crossfade so the audio never cuts out <b>(recommended)</b></label>
+<label class="radio"><input type="radio" name="audio" value="keep" onclick="audioMode()"> Keep the sped-up audio, at <input id="vol" type="text" value="10%" disabled> volume (0% = silent)</label>
+<div class="note">Smoothing pulls the real before/after sound across each sped-up segment so it never drops out. "Keep" plays the segment's own (very fast) audio at the volume you set.</div>
+<label>Output file (optional)</label>
+<input id="out" placeholder="(defaults to <input>.realtime.mp4)">
+<button id="go" onclick="run()">Start</button>
+<button id="cancel" onclick="cancel()" style="display:none;background:#b03a3a;margin-left:10px">Cancel</button>
+<div id="bar"><div id="fill"></div></div>
+<div id="msg"></div>
+<pre id="log"></pre>
+<div id="result"></div>
+<script>
+let timer=null;
+async function run(){
+  const path=document.getElementById('path').value.trim();
+  const msg=document.getElementById('msg');
+  if(!path){msg.textContent='Enter the video file path.';return;}
+  let pct=parseFloat(document.getElementById('vol').value.replace('%',''));
+  if(isNaN(pct)||pct<0)pct=10;
+  const payload={path,factor:+document.getElementById('factor').value,
+    tac_vol:pct/100,
+    game:document.getElementById('game').value,
+    lead:+document.getElementById('lead').value,
+    bridge_sound:document.querySelector('input[name=audio]:checked').value==='smooth',
+    start:document.getElementById('start').value.trim(),
+    end:document.getElementById('end').value.trim(),
+    out:document.getElementById('out').value.trim()};
+  const go=document.getElementById('go'), bar=document.getElementById('bar');
+  const cancelBtn=document.getElementById('cancel');
+  const stop=m=>{go.disabled=false;cancelBtn.style.display='none';bar.style.display='none';msg.textContent=m;};
+  go.disabled=true; bar.style.display='block'; document.getElementById('result').innerHTML='';
+  cancelBtn.style.display='inline-block'; cancelBtn.disabled=false; cancelBtn.textContent='Cancel';
+  const post=p=>fetch('/api/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)});
+  let r=await post(payload);
+  if(r.status===409){
+    const j=await r.json().catch(()=>({}));
+    if(j.error==='output exists'){
+      const nl=String.fromCharCode(10);
+      if(confirm((j.out||'The output file')+' already exists.'+nl+nl+'Overwrite it?')){
+        payload.overwrite=true; r=await post(payload);
+      } else { stop('Cancelled. Set a different Output file to keep the existing one.'); return; }
+    } else { stop(j.error||'Already running.'); return; }
+  }
+  if(!r.ok){ const j=await r.json().catch(()=>({})); stop(j.error||('Error '+r.status)); return; }
+  timer=setInterval(poll,1000);
+}
+async function cancel(){
+  const c=document.getElementById('cancel');
+  c.disabled=true; c.textContent='Cancelling…';
+  try{ await fetch('/api/cancel',{method:'POST'}); }catch(e){}
+}
+const $=id=>document.getElementById(id);
+async function pick(){
+  $('browse').disabled=true; $('browse').textContent='Choosing…';
+  try{
+    const j=await (await fetch('/api/pick')).json();
+    if(j.path){$('path').value=j.path; $('msg').textContent='';}
+    else if(j.error){$('msg').textContent=j.error;}
+  }catch(e){$('msg').textContent='Could not open the file picker: '+e;}
+  $('browse').disabled=false; $('browse').textContent='Browse…';
+}
+(function(){
+  const drop=$('drop'); if(!drop)return;
+  const stop=e=>{e.preventDefault();e.stopPropagation();};
+  ['dragenter','dragover'].forEach(ev=>drop.addEventListener(ev,e=>{stop(e);drop.classList.add('drag');}));
+  ['dragleave','dragend'].forEach(ev=>drop.addEventListener(ev,e=>{stop(e);drop.classList.remove('drag');}));
+  drop.addEventListener('drop',e=>{
+    stop(e); drop.classList.remove('drag');
+    const dt=e.dataTransfer;
+    let uri=(dt.getData('text/uri-list')||dt.getData('text/plain')||'').split(String.fromCharCode(10))[0].trim();
+    let p='';
+    if(uri.indexOf('file://')===0){
+      p=uri.slice(7);
+      if(p.indexOf('localhost')===0)p=p.slice(9);
+      try{p=decodeURIComponent(p);}catch(_){}
+      if(p.length>2&&p.charAt(0)==='/'&&p.charAt(2)===':')p=p.slice(1);
+    }
+    if(p){$('path').value=p; $('msg').textContent='';}
+    else if(dt.files&&dt.files.length){$('msg').textContent="Your browser hid the file's location. Click Browse… or paste the full path.";}
+  });
+})();
+function audioMode(){
+  const smooth=document.querySelector('input[name=audio]:checked').value==='smooth';
+  document.getElementById('vol').disabled=smooth;
+}
+audioMode();
+async function poll(){
+  const s=await (await fetch('/api/status')).json();
+  document.getElementById('fill').style.width=s.pct+'%';
+  document.getElementById('msg').textContent=s.message;
+  if(s.log&&s.log.length){const L=document.getElementById('log');
+    const atBottom=L.scrollHeight-L.scrollTop-L.clientHeight<30;
+    L.style.display='block';L.textContent=s.log.join(String.fromCharCode(10));
+    if(atBottom)L.scrollTop=L.scrollHeight;}
+  const finished=s.done||s.error||s.stage==='cancelled';
+  if(finished){clearInterval(timer);
+    document.getElementById('go').disabled=false;
+    document.getElementById('cancel').style.display='none';
+    if(s.done&&s.output){const out=s.output,res=document.getElementById('result');
+      res.textContent='Saved to ';
+      const a=document.createElement('a');a.href='#';a.className='dl';a.textContent=out;
+      a.title='Click to reveal in your file browser';
+      a.onclick=e=>{e.preventDefault();fetch('/api/open?path='+encodeURIComponent(out));};
+      res.appendChild(a);}}
+}
+</script></body></html>

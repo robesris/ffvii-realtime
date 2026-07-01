@@ -1,16 +1,14 @@
 """Render the sped-up video from detected intervals.
 
-Tactical segments are sped up by `factor` (video setpts + audio atempo, exact
-per-segment so audio/video stay locked); normal segments pass through at 1x.
+Tactical segments are sped up by `factor` (video setpts + audio atempo, per-segment
+so a/v stay locked); normal segments pass through at 1x. Retiming is
+resolution-independent, so this works at any resolution.
 
-Done in chunks (~chunk_secs of source each): one giant filtergraph over all
-segments runs at a tiny fraction of real-time because the split filter fans every
-decoded frame out to every segment branch. Per-chunk filtergraphs keep that fan-out
-small. Each chunk is encoded with identical settings and forced to an exact
-duration (audio apad + output -t) so no a/v drift accumulates, then the chunks are
-joined with the concat demuxer (-c copy, no re-encode).
-
-Works at any resolution (retiming is resolution-independent).
+We do it in chunks of ~chunk_secs of source each. A single filtergraph over the
+whole video is painfully slow because the split filter fans every decoded frame out
+to every segment branch; per-chunk graphs keep that fan-out small. Each chunk is
+pinned to an exact duration (apad + output -t) so a/v drift can't accumulate, then
+the chunks are joined with the concat demuxer (no re-encode).
 """
 import os
 import json
@@ -65,8 +63,7 @@ def _audio_graph(segs, cs, factor, atempo, tac_vol):
         else:
             al.append(f"[0:a]atrim={a:.3f}:{b:.3f},asetpts=PTS-STARTPTS[a{i}];")
         ain.append(f"[a{i}]")
-    # apad + the caller's output -t pins audio to exactly the chunk's video length, so
-    # no a/v drift accumulates across the concatenated chunks.
+    # apad plus the caller's output -t pins the audio to the chunk's exact video length.
     return "\n".join(al + ["".join(ain) + f"concat=n={len(segs)}:v=0:a=1[ac];[ac]apad[a]"])
 
 
@@ -75,10 +72,10 @@ def render(video, intervals, out, factor=100.0, tac_vol=0.1, crf=18, preset="slo
            bridge_sound=True, bridge_width=0.35, cancel=None):
     """Render `video` -> `out` using `intervals` (list of {start,end}).
 
-    window=(lo, hi) renders only that source span (used for previews); None = whole video.
-    bridge_sound: replace the sped-up seam audio with a crossfade so it never cuts out.
-    cancel: optional threading.Event; if set mid-render, the current ffmpeg is killed
-    and `Cancelled` is raised (the GUI's Cancel button).
+    window=(lo, hi) renders only that source span (for previews); None = whole video.
+    bridge_sound replaces the sped-up seam audio with a crossfade so it never cuts out.
+    If `cancel` (a threading.Event) is set mid-render, the current ffmpeg is killed and
+    Cancelled is raised.
     """
     info = probe(video)
     fps = info["fps"]
@@ -112,11 +109,10 @@ def render(video, intervals, out, factor=100.0, tac_vol=0.1, crf=18, preset="slo
             cs, ce = chunk[0][0], chunk[-1][1]
             target = sum((b - a) if not t else (b - a) / factor for a, b, t in chunk)
             seek = ["-ss", f"{cs:.3f}", "-t", f"{ce - cs + 1.0:.3f}", "-i", video]
-            # Render video and audio in SEPARATE passes, then mux. A single graph that
-            # produces both [v] and [a] from one input deadlocks when a chunk mixes long
-            # 1x segments with heavily sped-up ones: the two output streams advance at
-            # wildly different rates and ffmpeg's interleaver stalls forever. Each stream
-            # alone is fine, so we build them independently and join with -c copy.
+            # render video and audio in separate passes, then mux. one graph producing
+            # both [v] and [a] from a chunk that mixes long 1x segments with heavily
+            # sped-up ones can deadlock: the two streams advance at very different rates
+            # and ffmpeg's interleaver stalls. each stream on its own is fine.
             vtmp, atmp = outp[:-4] + "_v.mp4", outp[:-4] + "_a.m4a"
             with open(graphpath, "w") as f:
                 f.write(_video_graph(chunk, cs, factor))

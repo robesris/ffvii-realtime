@@ -24,9 +24,9 @@ class Cancelled(Exception):
 
 
 def run_cancellable(cmd, cancel=None, check=True, poll=0.2, **kw):
-    """Like subprocess.run, but if `cancel` (a threading.Event) becomes set while the
-    child runs, the child is terminated and `Cancelled` is raised. With cancel=None it
-    is a plain blocking run. Lets the GUI's Cancel button interrupt a long ffmpeg mid-run."""
+    """Like subprocess.run, but if `cancel` (a threading.Event) is set while the child
+    runs, the child is terminated and Cancelled is raised. cancel=None is a plain
+    blocking run."""
     if cancel is None:
         return subprocess.run(cmd, check=check, **kw)
     p = subprocess.Popen(cmd, **kw)
@@ -183,6 +183,6 @@ def probe(video):
     try:
         return _probe_ffprobe(video)
     except Exception:
-        # ffprobe missing, or a build/version whose output we couldn't use
-        # (e.g. no r_frame_rate). OpenCV is always available — fall back to it.
+        # ffprobe missing, or output we couldn't parse (e.g. no r_frame_rate).
+        # fall back to OpenCV, which is always installed.
         return _probe_opencv(video)

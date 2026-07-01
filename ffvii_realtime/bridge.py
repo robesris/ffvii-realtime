@@ -1,16 +1,16 @@
 """Bridge the audio across sped-up (Tactical) seams.
 
-When a Tactical segment is sped up, its audio becomes a sub-frame "chipmunk" blip
-and the sound seems to cut out, with a hard jump from the before-ambient to the
-after-ambient. Bridging replaces each seam with an equal-power crossfade between the
-REAL before- and after-ambient pulled from the original source audio, so the sound
-connects seamlessly instead of dropping out.
+Speeding up a Tactical segment turns its audio into a sub-frame blip, so the sound
+seems to cut out and jump straight from the before-ambient to the after-ambient.
+Bridging replaces each seam with an equal-power crossfade between the real before-
+and after-ambient from the source audio, so the sound stays continuous.
 
-This rebuilds only the AUDIO track and remuxes it onto the already-rendered video
-with -c:v copy (no video re-encode), tempo-matching the audio to the video's exact
-duration (a ~0.01% correction, inaudible) so the two stay locked end to end.
+Only the audio track is rebuilt; it's remuxed onto the already-rendered video with
+-c:v copy and tempo-matched to the video's exact duration (a tiny, inaudible
+correction) so the two stay locked.
 """
 import os
+import shutil
 import subprocess
 import tempfile
 import wave
@@ -113,6 +113,5 @@ def bridge_audio(rendered, source, intervals, factor, window=None, m_max=0.35, s
                         "-movflags", "+faststart", tmp], check=True)
         os.replace(tmp, rendered)
     finally:
-        import shutil
         shutil.rmtree(work, ignore_errors=True)
     return rendered
