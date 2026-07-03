@@ -1,9 +1,11 @@
 """Find the Tactical Mode (slow-motion) segments in a capture.
 
-Two passes over the video: a badge pass (scale each frame to 1080p, crop the badge
-band, score L2/R2) and a motion pass (mean abs diff between downscaled gray frames).
-A frame counts as Tactical if the badges match strongly, or the menu is up and the
-scene is nearly frozen (the badge hasn't slid in yet or is washed out).
+Several passes over the video: badge (scale each frame to 1080p, crop the badge band,
+score L2/R2), header-text and command-panel passes for solo fights that show no L2/R2
+prompt, and a motion pass (mean abs diff between downscaled gray frames). A frame
+counts as Tactical if the badges match strongly, the header text or command panel is
+up in slow-mo, or the menu is up and the scene is nearly frozen (the badge hasn't slid
+in yet or is washed out).
 
 Runs of Tactical frames become intervals: merged across short gaps, tiny blips
 dropped, and each start nudged earlier by `lead` to cover the panel slide-in.
@@ -127,6 +129,30 @@ def _scan_tac_text(pipe, profile, n, cancel, progress):
     return tacs
 
 
+def _scan_menu(pipe, profile, n, cancel, progress):
+    """Pass 1c: score the command-menu panel, aligned with the n badge frames.
+    All-zeros if the profile has no menu band."""
+    menus = [0.0] * n
+    if profile.MENU_BAND is None:
+        return menus
+    mx, my, mw, mh = profile.MENU_BAND
+    proc = pipe(f"scale={badges.REF_W}:{badges.REF_H},crop={mw}:{mh}:{mx}:{my}", "bgr24")
+    fmb = mw * mh * 3
+    k = 0
+    while k < n:
+        buf = proc.stdout.read(fmb)
+        if len(buf) < fmb:
+            break
+        _check_cancel(cancel, proc)
+        mband = np.frombuffer(buf, np.uint8).reshape(mh, mw, 3)
+        menus[k] = profile.score_menu(mband)
+        k += 1
+        if progress and k % 10000 == 0:
+            progress("menu", k)
+    proc.wait()
+    return menus
+
+
 def _scan_motion(pipe, n, cancel, progress):
     """Pass 2: mean abs frame-diff on downscaled gray frames, then a windowed-mean
     smooth. slow-mo is sustained low motion, whereas juddery fast action (near-dup
@@ -193,6 +219,7 @@ def detect(video, game="rebirth", thresh=None, l2_frozen=None, motion=MOTION,
     l2s, r2s, nr2s = _scan_badges(pipe, profile, cancel, progress)
     idx = len(l2s)
     tacs = _scan_tac_text(pipe, profile, idx, cancel, progress)
+    menus = _scan_menu(pipe, profile, idx, cancel, progress)
     ms = _scan_motion(pipe, idx, cancel, progress)
 
     flags = []
@@ -210,12 +237,17 @@ def detect(video, game="rebirth", thresh=None, l2_frozen=None, motion=MOTION,
         # header text present and the scene slow-mo. a very strong text match skips the
         # motion gate, same idea as `confident` above.
         tac = tacs[i] > profile.tac_thr and (ms[i] < slow_cap or tacs[i] > profile.tac_conf)
+        # command panel up and the scene slow-mo, same shape as the text clause. this
+        # is the signal that catches solo Tactical Mode over bright floors, where the
+        # thin header text fragments but the panel outline holds.
+        menu = menus[i] > profile.menu_thr and (ms[i] < slow_cap or menus[i] > profile.menu_conf)
         # the normal menu also shows an R2 badge, so an R2 match there vetoes a hit -
-        # but the normal menu never shows the "Tactical Mode" text, so a clear text
-        # match overrides the veto (which otherwise trips on the party switcher over
-        # bright backgrounds).
-        normal_menu = nr2s[i] > nr2 and tacs[i] <= profile.tac_thr
-        flags.append((strong or confident or frozen or tac) and not normal_menu)
+        # but the normal menu never shows the Tactical Mode text or command panel, so a
+        # clear match on either overrides the veto (which otherwise trips on the party
+        # switcher over bright backgrounds).
+        normal_menu = (nr2s[i] > nr2 and tacs[i] <= profile.tac_thr
+                       and menus[i] <= profile.menu_thr)
+        flags.append((strong or confident or frozen or tac or menu) and not normal_menu)
 
     ivs = _intervals(flags, fps, merge_gap, min_dur, lead, t0=start)
     if profile.bridge_gap > 0:
