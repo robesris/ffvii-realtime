@@ -43,6 +43,13 @@ def _parse_range(s):
     return t(a), t(b)
 
 
+def _parse_ranges(s):
+    """'MM:SS-MM:SS,MM:SS-MM:SS' -> [(start, end), ...]; '' -> None."""
+    if not s or not s.strip():
+        return None
+    return [_parse_range(part) for part in s.split(",") if part.strip()]
+
+
 def _add_range_opt(p, required=False):
     p.add_argument("--range", required=required,
                    help="only process a section of the video, MM:SS-MM:SS "
@@ -74,6 +81,18 @@ def _add_detect_opts(p):
                    help="merge Tactical segments separated by less than this gap (s)")
     p.add_argument("--min-dur", type=float, default=MIN_DUR,
                    help="discard detected segments shorter than this (s)")
+    p.add_argument("--badges", choices=["auto", "none", "required"], default="auto",
+                   help="what to assume about the L2/R2 allies prompt: 'auto' uses every "
+                        "signal (default); 'none' for a solo fight with no badges (detect "
+                        "via the Tactical Mode text + command panel only); 'required' when "
+                        "badges are always clearly visible (flag only where a badge shows, "
+                        "highest precision)")
+    p.add_argument("--include", type=_parse_ranges, default=None, metavar="RANGES",
+                   help="force these ranges to be sped up even if not detected, "
+                        "MM:SS-MM:SS[,...] (for segments detection missed)")
+    p.add_argument("--exclude", type=_parse_ranges, default=None, metavar="RANGES",
+                   help="never speed up these ranges even if detected, "
+                        "MM:SS-MM:SS[,...] (for false positives)")
 
 
 def _add_render_opts(p):
@@ -132,6 +151,7 @@ def _run_detect(args):
     print(f"Detecting Tactical Mode segments in {args.input}{where} ...", file=sys.stderr)
     res = detect(args.input, game=args.game, thresh=args.thresh, slow_cap=args.slow_cap, nr2=args.nr2,
                          merge_gap=args.merge_gap, min_dur=args.min_dur, lead=args.lead,
+                         badge_mode=args.badges, include=args.include, exclude=args.exclude,
                          start=start, duration=dur, progress=_progress_detect)
     if res.get("warning"):
         print(f"WARNING: {res['warning']}", file=sys.stderr)

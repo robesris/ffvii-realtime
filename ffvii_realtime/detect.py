@@ -58,6 +58,39 @@ def _intervals(flags, fps, merge_gap, min_dur, lead, t0=0.0):
     return [(round(a, 3), round(b, 3)) for a, b in out]
 
 
+def _merge_ranges(ranges):
+    """Sort (start, end) ranges and merge overlapping/touching ones."""
+    out = []
+    for a, b in sorted((a, b) for a, b in ranges if b > a):
+        if out and a <= out[-1][1] + 1e-9:
+            out[-1][1] = max(out[-1][1], b)
+        else:
+            out.append([a, b])
+    return [(round(a, 3), round(b, 3)) for a, b in out]
+
+
+def _subtract_ranges(ivs, cuts):
+    """Remove the cut ranges from ivs, splitting an interval when a cut lands inside it."""
+    cuts = _merge_ranges(cuts)
+    out = []
+    for a, b in ivs:
+        seg = [(a, b)]
+        for ca, cb in cuts:
+            nxt = []
+            for sa, sb in seg:
+                if cb <= sa or ca >= sb:            # no overlap
+                    nxt.append((sa, sb))
+                    continue
+                if sa < ca:                          # keep the part before the cut
+                    nxt.append((sa, ca))
+                if cb < sb:                          # keep the part after the cut
+                    nxt.append((cb, sb))
+            seg = nxt
+        out.extend(seg)
+    # drop sub-frame slivers left when a cut's edge nearly coincides with a segment's
+    return [(round(a, 3), round(b, 3)) for a, b in out if b - a > 0.05]
+
+
 def _bridge_frozen_gaps(ivs, ms, fps, start, max_gap, motion_thr):
     """Fill near-frozen gaps between consecutive segments. A slow-motion gap with
     Tactical on both sides is almost always the same menu with the badges briefly
@@ -183,13 +216,28 @@ def _scan_motion(pipe, n, cancel, progress):
 
 def detect(video, game="rebirth", thresh=None, l2_frozen=None, motion=MOTION,
            slow_cap=SLOW_CAP, nr2=NR2, merge_gap=MERGE_GAP, min_dur=MIN_DUR, lead=LEAD,
+           badge_mode="auto", include=None, exclude=None,
            start=0.0, duration=None, progress=None, cancel=None):
     """Scan `video`, return dict with intervals and metadata. `game` selects the
     HUD profile ('rebirth', 'remake', or 'revelation'). thresh/l2_frozen fall back
     to the profile's recommended values when None. start/duration limit the scan to
     a section of the video (seconds); returned interval times are still absolute.
     If `cancel` (a threading.Event) is set mid-scan, decoding stops and Cancelled is
-    raised."""
+    raised.
+
+    `badge_mode` says what to assume about the L2/R2 allies prompt:
+      'auto'     - use every signal (badges plus the "Tactical Mode" text and command
+                   panel). Best general choice, including party fights over bright
+                   scenery where a washed-out badge is caught by the other signals.
+      'none'     - a solo fight with no L2/R2 prompt: ignore the badges (and their veto)
+                   and detect from the text and command panel only.
+      'required' - badges are always clearly visible while Tactical: flag only frames
+                   where a badge shows, and drop the text/panel signals. Highest
+                   precision, but loses any frame where a badge does wash out.
+
+    `include`/`exclude` are lists of (start, end) second ranges: `include` forces those
+    spans to count as Tactical (for segments detection missed), `exclude` removes them
+    (for false positives). Both are applied after detection."""
     profile = badges.get_profile(game)
     if thresh is None:
         thresh = profile.thresh
@@ -218,8 +266,12 @@ def detect(video, game="rebirth", thresh=None, l2_frozen=None, motion=MOTION,
 
     l2s, r2s, nr2s = _scan_badges(pipe, profile, cancel, progress)
     idx = len(l2s)
-    tacs = _scan_tac_text(pipe, profile, idx, cancel, progress)
-    menus = _scan_menu(pipe, profile, idx, cancel, progress)
+    # 'required' trusts the badges alone, so the text/panel passes are skipped as unused.
+    if badge_mode == "required":
+        tacs = menus = [0.0] * idx
+    else:
+        tacs = _scan_tac_text(pipe, profile, idx, cancel, progress)
+        menus = _scan_menu(pipe, profile, idx, cancel, progress)
     ms = _scan_motion(pipe, idx, cancel, progress)
 
     flags = []
@@ -234,6 +286,7 @@ def detect(video, game="rebirth", thresh=None, l2_frozen=None, motion=MOTION,
             frozen = False
         else:  # 'l2': menu up (L present) and scene frozen
             frozen = l2s[i] > l2_frozen and ms[i] < motion
+        badge_hit = strong or confident or frozen
         # header text present and the scene slow-mo. a very strong text match skips the
         # motion gate, same idea as `confident` above.
         tac = tacs[i] > profile.tac_thr and (ms[i] < slow_cap or tacs[i] > profile.tac_conf)
@@ -247,11 +300,25 @@ def detect(video, game="rebirth", thresh=None, l2_frozen=None, motion=MOTION,
         # switcher over bright backgrounds).
         normal_menu = (nr2s[i] > nr2 and tacs[i] <= profile.tac_thr
                        and menus[i] <= profile.menu_thr)
-        flags.append((strong or confident or frozen or tac or menu) and not normal_menu)
+        if badge_mode == "none":      # solo: no badges, so no badge signals and no veto
+            hit = tac or menu
+        elif badge_mode == "required":  # badges guaranteed: a badge must be present
+            hit = badge_hit and not normal_menu
+        else:                         # auto: every signal, additive
+            hit = (badge_hit or tac or menu) and not normal_menu
+        flags.append(hit)
 
     ivs = _intervals(flags, fps, merge_gap, min_dur, lead, t0=start)
     if profile.bridge_gap > 0:
         ivs = _bridge_frozen_gaps(ivs, ms, fps, start, profile.bridge_gap, profile.bridge_motion)
+    # manual overrides: force `include` spans in, cut `exclude` spans out. clamp to the
+    # scanned window so a stray range can't extend past what was decoded.
+    if include:
+        hi = start + duration if duration else info["duration"]
+        clamped = [(max(start, a), min(hi, b)) for a, b in include]
+        ivs = _merge_ranges([tuple(iv) for iv in ivs] + clamped)
+    if exclude:
+        ivs = _subtract_ranges(ivs, exclude)
     total = sum(b - a for a, b in ivs)
     return {
         "video": video, "game": game, "fps": fps,
@@ -259,7 +326,7 @@ def detect(video, game="rebirth", thresh=None, l2_frozen=None, motion=MOTION,
         "duration": round(info["duration"], 3), "frames": idx,
         "params": {"thresh": thresh, "l2_frozen": l2_frozen, "motion": motion,
                    "slow_cap": slow_cap, "nr2": nr2, "merge_gap": merge_gap,
-                   "min_dur": min_dur, "lead": lead},
+                   "min_dur": min_dur, "lead": lead, "badges": badge_mode},
         "n_segments": len(ivs),
         "tactical_seconds": round(total, 2),
         "warning": warning,
