@@ -40,6 +40,13 @@ a.dl{display:inline-block;margin-top:14px}
   <option value="revelation">Final Fantasy VII Revelation</option>
 </select>
 <div class="note">Which game's HUD to detect &mdash; <b>you must pick the one your footage is from</b>, or detection finds 0 segments. Defaults to Rebirth.</div>
+<label>L2/R2 badges</label>
+<select id="badges">
+  <option value="auto" selected>Auto (recommended)</option>
+  <option value="none">Solo fight &mdash; no L2/R2 badges</option>
+  <option value="required">Badges always visible (strict)</option>
+</select>
+<div class="note"><b>Auto</b> uses every signal (badges plus the Tactical Mode text and command panel) &mdash; best for most footage, including party fights over bright scenery. <b>Solo</b>: no allies prompt, so detect from the text and command panel only. <b>Strict</b>: badges are always clearly visible, so speed up only frames where a badge shows (highest precision).</div>
 <div class="row">
   <div><label>Speed-up factor</label><input id="factor" type="number" value="100" min="2" step="1">
     <div class="note">100 = default in-game slowdown. Different if you're using a Tactical Mode slowdown setting other than the default. Know the real factor for any setting? Please <a href="https://github.com/robesris/ffvii-realtime/issues" target="_blank" rel="noopener">open an issue</a>.</div></div>
@@ -51,6 +58,12 @@ a.dl{display:inline-block;margin-top:14px}
     <div class="note">Process only from here, e.g. 24:00. Blank = beginning.</div></div>
   <div><label>End (optional)</label><input id="end" placeholder="(end of video)">
     <div class="note">Process only up to here, e.g. 26:30. Blank = end.</div></div>
+</div>
+<div class="row">
+  <div><label>Force speed-up (optional)</label><input id="include" placeholder="1:26-1:34, 2:05-2:12">
+    <div class="note">Always speed up these ranges even if detection missed them. MM:SS-MM:SS, comma-separated.</div></div>
+  <div><label>Never speed up (optional)</label><input id="exclude" placeholder="0:44-0:47">
+    <div class="note">Leave these ranges at normal speed even if detected (for false positives). MM:SS-MM:SS, comma-separated.</div></div>
 </div>
 <label>Sped-up audio</label>
 <label class="radio"><input type="radio" name="audio" value="smooth" checked onclick="audioMode()"> Smooth it across the sped-up sections &mdash; crossfade so the audio never cuts out <b>(recommended)</b></label>
@@ -77,8 +90,11 @@ async function run(){
     game:document.getElementById('game').value,
     lead:+document.getElementById('lead').value,
     bridge_sound:document.querySelector('input[name=audio]:checked').value==='smooth',
+    badges:document.getElementById('badges').value,
     start:document.getElementById('start').value.trim(),
     end:document.getElementById('end').value.trim(),
+    include:document.getElementById('include').value.trim(),
+    exclude:document.getElementById('exclude').value.trim(),
     out:document.getElementById('out').value.trim()};
   const go=document.getElementById('go'), bar=document.getElementById('bar');
   const cancelBtn=document.getElementById('cancel');

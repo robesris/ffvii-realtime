@@ -50,8 +50,23 @@ def _secs(s):
     return float(s)
 
 
+def _ranges(s):
+    """Parse 'MM:SS-MM:SS, MM:SS-MM:SS' -> [(start, end), ...]; '' / None -> None."""
+    s = str(s or "").strip()
+    if not s:
+        return None
+    out = []
+    for part in s.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        a, b = part.split("-")
+        out.append((_secs(a), _secs(b)))
+    return out or None
+
+
 def _job(path, factor, tac_vol, out, start=0.0, duration=None, lead=LEAD, bridge_sound=True,
-         game="rebirth"):
+         game="rebirth", badge_mode="auto", include=None, exclude=None):
     _CANCEL.clear()
     try:
         _set(running=True, done=False, error=None, output=None, stage="detect",
@@ -71,6 +86,7 @@ def _job(path, factor, tac_vol, out, start=0.0, duration=None, lead=LEAD, bridge
                 _log(f"Scanning ({stage}) ...")
 
         res = detect(path, game=game, start=start, duration=duration, lead=lead,
+                     badge_mode=badge_mode, include=include, exclude=exclude,
                      progress=dprog, cancel=_CANCEL)
 
         # nothing detected means nothing to speed up, so skip the render (it would just
@@ -231,11 +247,20 @@ class Handler(BaseHTTPRequestHandler):
             game = req.get("game", "rebirth")
             if game not in ("rebirth", "remake", "revelation"):
                 self._send(400, json.dumps({"error": "unknown game %r" % game})); return
+            badge_mode = req.get("badges", "auto")
+            if badge_mode not in ("auto", "none", "required"):
+                self._send(400, json.dumps({"error": "unknown badges mode %r" % badge_mode})); return
+            try:
+                include = _ranges(req.get("include"))
+                exclude = _ranges(req.get("exclude"))
+            except ValueError:
+                self._send(400, json.dumps({"error": "bad include/exclude range (use MM:SS-MM:SS)"})); return
             t = threading.Thread(target=_job, args=(path, float(req.get("factor", 100)),
                                                      float(req.get("tac_vol", 0.1)), out, start, duration,
                                                      float(req.get("lead", LEAD))),
                                  kwargs={"bridge_sound": bool(req.get("bridge_sound", True)),
-                                         "game": game},
+                                         "game": game, "badge_mode": badge_mode,
+                                         "include": include, "exclude": exclude},
                                  daemon=True)
             t.start()
             self._send(200, json.dumps({"ok": True}))
