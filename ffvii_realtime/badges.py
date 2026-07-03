@@ -34,6 +34,7 @@ REBIRTH_L2 = Box(x=0, y=0, w=64, h=52)
 REBIRTH_R2 = Box(x=398, y=0, w=68, h=52)
 REBIRTH_NR2 = Box(x=53, y=3, w=90, h=60)         # normal-menu R2, for the veto
 REBIRTH_TAC = Box(x=60, y=606, w=360, h=70)      # "Tactical Mode" header text (solo fights)
+REBIRTH_MENU = Box(x=48, y=712, w=420, h=44)     # command menu "Commands" header + divider
 
 REMAKE_BAND = Box(x=70, y=646, w=400, h=44)      # badge row only; taller catches bright scenery
 REMAKE_L2 = Box(x=0, y=0, w=120, h=44)           # wide windows tolerate the slide-in + name length
@@ -48,6 +49,12 @@ TEAL_MIN_G, TEAL_MIN_B = 120, 110        # green and blue must be at least this 
 TEAL_G_OVER_R, TEAL_B_OVER_R = 25, 10    # ...and this much brighter than red
 TEAL_MAX_COVERAGE = 0.30                 # teal over more of the band than this is
                                          # background scenery, not the header text
+
+# --- command-menu tuning ---------------------------------------------------------
+# The "Commands" header text and the divider line under it read bright on the
+# translucent menu panel, so a white mask isolates them from whatever scenery bleeds
+# through the panel.
+MENU_WHITE_THR = 180
 
 
 def white_mask(bgr, thr):
@@ -102,7 +109,8 @@ class Profile:
                  white_thr=200, black_thr=50, use_black=True, guard=False, nr2_sub=None,
                  thresh=0.48, l2_frozen=0.55, frozen_mode="l2",
                  conf_l2=0.90, conf_r2=0.60, bridge_gap=0.0, bridge_motion=2.0,
-                 tac_band=None, tac_sub=None, tac_thr=0.55, tac_conf=0.80):
+                 tac_band=None, tac_sub=None, tac_thr=0.55, tac_conf=0.80,
+                 menu_band=None, menu_sub=None, menu_thr=0.62, menu_conf=0.80):
         self.name = name
         self.BAND = band              # (x, y, w, h) of the band decoded in pass 1
         self.L2_SUB = l2_sub          # L2 search window within the band
@@ -147,6 +155,20 @@ class Profile:
             self.tac_teal = [teal_mask(t) for t in self.tac_col]
         else:
             self.tac_col = self.tac_wht = self.tac_teal = None
+        # optional command-menu signal. the "Commands" header + divider sit at a fixed
+        # spot whenever the menu is open, so this catches Tactical Mode over bright
+        # reflective floors where the thin header text match fragments. decoded as its
+        # own band in detect.py (see MENU_BAND).
+        self.MENU_BAND = menu_band    # (x, y, w, h) command-panel band, or None to disable
+        self.MENU_SUB = menu_sub if menu_sub is not None else (
+            Box(0, 0, menu_band.w, menu_band.h) if menu_band is not None else None)
+        self.menu_thr = menu_thr      # command-panel match threshold
+        self.menu_conf = menu_conf    # high-confidence match: bypasses the motion gate
+        if menu_band is not None:
+            self.menu_col = [_load(tpl_subdir, "menu_a.png"), _load(tpl_subdir, "menu_b.png")]
+            self.menu_wht = [white_mask(t, MENU_WHITE_THR) for t in self.menu_col]
+        else:
+            self.menu_col = self.menu_wht = None
 
     def _score(self, band, sub, col, wht, blk):
         roi = band[sub.y:sub.y + sub.h, sub.x:sub.x + sub.w]
@@ -188,6 +210,18 @@ class Profile:
         tl = _best_guarded(tm, self.tac_teal) if float(tm.mean()) < TEAL_MAX_COVERAGE else 0.0
         return max(c, m, tl)
 
+    def score_menu(self, menu_band):
+        """Match the command-menu 'Commands' header + divider in its band, or 0.0 if
+        this profile has no menu band. Matched on a white mask: the header text and
+        divider read bright on the translucent panel whatever scenery bleeds through
+        it, so the shape survives the bright reflective floors that fragment the thin
+        header-text match."""
+        if self.menu_wht is None:
+            return 0.0
+        sub = self.MENU_SUB
+        roi = menu_band[sub.y:sub.y + sub.h, sub.x:sub.x + sub.w]
+        return _best_guarded(white_mask(roi, MENU_WHITE_THR), self.menu_wht)
+
 
 # Rebirth: white-on-black badges, L2 far-left and R2 far-right. The normal-play
 # prompt sits lower-left too, so we need the NR2 veto window to tell it apart.
@@ -201,6 +235,9 @@ REBIRTH = Profile(
     # the header text covers solo boss fights (Cloud vs. Rufus) that have no party
     # and so never show the L2/R2 prompt.
     tac_band=REBIRTH_TAC,
+    # the command panel backs the header text up: over bright reflective floors the
+    # thin text match drops out but the panel's "Commands" header + divider hold.
+    menu_band=REBIRTH_MENU,
 )
 
 # Remake: dark-text-on-white shield badges in a compact "L2 <name> R2" cluster on
