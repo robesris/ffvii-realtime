@@ -24,6 +24,8 @@ select{width:100%;padding:8px;border:1px solid #ccc;border-radius:6px;box-sizing
 .drop.drag{outline:2px dashed #2b6cb0;outline-offset:4px;border-radius:8px;background:#eef5ff}
 #log{margin-top:14px;background:#1e1e1e;color:#d4d4d4;font:12px/1.45 ui-monospace,Menlo,Consolas,monospace;padding:10px 12px;border-radius:6px;height:170px;overflow:auto;white-space:pre-wrap;display:none}
 a.dl{display:inline-block;margin-top:14px}
+details.adv{margin-top:16px;border-top:1px solid #eee;padding-top:2px}
+details.adv>summary{cursor:pointer;font-weight:600;color:#2b6cb0;margin:10px 0;user-select:none}
 </style></head><body>
 <h1>FFVII Realtime <span class="ver">v__FFVII_VERSION__</span></h1>
 <p class="sub">Speeds up Final Fantasy VII Rebirth Tactical Mode slow-motion so the fight plays in real time.</p>
@@ -40,6 +42,7 @@ a.dl{display:inline-block;margin-top:14px}
   <option value="revelation">Final Fantasy VII Revelation</option>
 </select>
 <div class="note">Which game's HUD to detect &mdash; <b>you must pick the one your footage is from</b>, or detection finds 0 segments. Defaults to Rebirth.</div>
+<details class="adv"><summary>Advanced options</summary>
 <label>L2/R2 badges</label>
 <select id="badges">
   <option value="auto" selected>Auto (recommended)</option>
@@ -69,6 +72,7 @@ a.dl{display:inline-block;margin-top:14px}
 <label class="radio"><input type="radio" name="audio" value="smooth" checked onclick="audioMode()"> Smooth it across the sped-up sections &mdash; crossfade so the audio never cuts out <b>(recommended)</b></label>
 <label class="radio"><input type="radio" name="audio" value="keep" onclick="audioMode()"> Keep the sped-up audio, at <input id="vol" type="text" value="10%" disabled> volume (0% = silent)</label>
 <div class="note">Smoothing pulls the real before/after sound across each sped-up segment so it never drops out. "Keep" plays the segment's own (very fast) audio at the volume you set.</div>
+</details>
 <label>Output file (optional)</label>
 <input id="out" placeholder="(defaults to <input>.realtime.mp4)">
 <button id="go" onclick="run()">Start</button>
