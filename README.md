@@ -6,9 +6,9 @@
 
 **Remove Tactical Mode slow-motion from Final Fantasy VII Rebirth combat captures so the whole fight plays at uniform real-time speed.**
 
-![FFVII Realtime demo: Tactical Mode slow-motion sped up to real time](https://raw.githubusercontent.com/robesris/ffvii-realtime/main/assets/demo.gif)
+<img src="https://raw.githubusercontent.com/robesris/ffvii-realtime/main/assets/demo.gif" width="720" alt="FFVII Realtime demo: Tactical Mode slow-motion sped up to real time">
 
-*A fight with Tactical Mode slow-motion removed, playing at uniform real-time speed. Each quick flash is a spot where the game had slowed to a crawl for the command menu — at the default 100× factor those stretches collapse away while the real-time action plays untouched.*
+*Cloud mid-fight in Rebirth with the Tactical Mode slow-motion removed — the whole clip runs at uniform real-time speed. The command-menu moments that would normally crawl in slow-motion flash past instead; only the artificial slow-down is compressed, and the real-time combat plays untouched.*
 
 ![The FFVII Realtime app](https://raw.githubusercontent.com/robesris/ffvii-realtime/main/assets/gui.png)
 
