@@ -1,6 +1,7 @@
 """Bridge the audio across sped-up (Tactical) seams.
 
-Speeding up a Tactical segment turns its audio into a sub-frame blip, so the sound
+Speeding up a Tactical segment compresses its audio to a fraction of its length (a
+quick menu-open is sub-frame; even a long pause collapses to ~a second), so the sound
 seems to cut out and jump straight from the before-ambient to the after-ambient.
 Bridging replaces each seam with an equal-power crossfade between the real before-
 and after-ambient from the source audio, so the sound stays continuous.
@@ -66,7 +67,8 @@ def build_bridged_track(src, sr, segs, factor, m_max=0.35, src_t0=0.0):
         prev, nxt = i - 1, run_end
         if prev >= 0 and nxt < len(segs):               # skip a run at the very start/end
             # seam: where the run sits on the OUTPUT timeline (samples).
-            # sped_up_len: the run's length AFTER speed-up - a sub-frame sliver (4s / 100x ~= 0.04s).
+            # sped_up_len: the run's length AFTER speed-up (a quick menu is sub-frame;
+            # a long pause still collapses to roughly a second).
             seam = int(output_offsets[i])
             sped_up_len = int(output_offsets[run_end] - output_offsets[i])
             # crossfade half-width, clamped so it never eats more than half of either
@@ -74,24 +76,24 @@ def build_bridged_track(src, sr, segs, factor, m_max=0.35, src_t0=0.0):
             fade_half = min(max_half, output_lengths[prev] // 2, output_lengths[nxt] // 2)
             if fade_half >= 2:
                 # the crossfade STRADDLES the seam: it starts `fade_half` before it (over the
-                # tail of the previous real-time audio), spans the sliver, and laps `fade_half`
-                # into the next real-time audio. total width `fade_len`.
+                # tail of the previous real-time audio), spans the sped-up run, and laps
+                # `fade_half` into the next real-time audio. total width `fade_len`.
                 fade_len = 2 * fade_half + sped_up_len
                 # `entering`: source audio around where the slow-mo BEGAN. reads from
                 # `fade_half` before that point forward, so entering[0] equals the real-time
                 # audio already at the crossfade's left edge (-> that edge is a seamless copy).
                 entering = grab(source_ends[prev] - fade_half, fade_len)
                 # `leaving`: source audio around where the slow-mo ENDED, offset so its LAST
-                # sample lands `fade_half` past the sliver, matching the real-time audio
+                # sample lands `fade_half` past the run, matching the real-time audio
                 # already at the right edge (-> that edge is seamless too).
                 leaving = grab(source_starts[nxt] + fade_half - fade_len, fade_len)
                 # equal-power crossfade: cos^2 + sin^2 = 1, so loudness stays flat (no dip).
                 # `ramp` sweeps 0->1 over `fade_len`, so it's pure `entering` at the left edge
-                # and pure `leaving` at the right; because the sliver is tiny the seam itself
-                # falls near ramp=0.5, i.e. a ~50/50 blend of the audio entering vs. leaving
-                # the slow-mo. both edges match the audio they overwrite, so only the
-                # ~2*fade_half swell in the middle is audible - and the further apart the two
-                # excerpts are in the source (a long run), the more they differ and beat.
+                # and pure `leaving` at the right. for a quick menu the run is a sliver, so the
+                # seam sits near ramp=0.5 (a ~50/50 blend); for a long pause the blend plays out
+                # across the compressed run. both edges match the audio they overwrite, so only
+                # the swell in the middle is audible - and the further apart the two excerpts
+                # are in the source (a long run), the more they differ and beat.
                 ramp = np.linspace(0.0, 1.0, fade_len)[:, None]
                 track[seam - fade_half:seam - fade_half + fade_len] = \
                     entering * np.cos(0.5 * np.pi * ramp) + leaving * np.sin(0.5 * np.pi * ramp)
