@@ -10,16 +10,19 @@
 
 *A fight with Tactical Mode slow-motion removed, playing at uniform real-time speed. Each quick flash is a spot where the game had slowed to a crawl for the command menu — at the default 100× factor those stretches collapse away while the real-time action plays untouched. ([full clip, higher-quality MP4](https://github.com/robesris/ffvii-realtime/raw/main/assets/demo.mp4))*
 
+**Watch the full example on YouTube:** [before](https://www.youtube.com/watch?v=1BBoaOTGx-4) — the fight as captured, with Tactical Mode slow-motion · [after](https://www.youtube.com/watch?v=CQG_V0so8FU) — the same fight sped up to real time.
+
 In Rebirth, opening the Tactical Mode command menu drops the game into heavy slow-motion (apparently 100x slower than real-time) while you pick your actions. It's great to play, but these pauses, especially long ones, aren't much fun to watch in a recording. FFVII Realtime automatically finds those slow-motion segments and speeds only them back up, leaving the rest of the fight untouched, so the whole thing flows at one natural pace.
 
 > Example: a 1:55:00 capture became ~1:09:00 of continuous, full-speed combat — around 570 Tactical Mode segments (~47 minutes of slow-motion) detected and sped up, fully audio-synced.
 
 ---
 
-## How it works (short version)
+## How it works
 
 1. **Detect** — a computer-vision pass (OpenCV) scans every frame and recognizes Tactical Mode two ways: the on-screen **L2/R2 button prompts** at their fixed positions, and the **"Tactical Mode" header text** above the command menu. Both are made robust to bright/gray/busy backgrounds by combining color + white-mask + black-mask matching, and a **motion check** confirms the scene is actually in slow-motion (so a stray match during fast action can't trigger a false speed-up). The header-text signal means **solo boss fights work too**: those have no party, so the L2/R2 *allies* prompt never appears — but the menu header still does.
 2. **Render** — FFmpeg re-times each detected segment (`setpts` for video, `atempo` for audio, kept exactly in sync), speeding up the slow-motion while normal-speed combat passes through untouched, then stitches it all back together.
+3. **Bridge the audio** — speeding a Tactical segment up ~100× would turn its audio into a sub-frame blip, so the sound would cut out and jump straight from before the menu to after it. Instead, each seam is filled with an **equal-power crossfade** between the real audio going *into* the slow-motion and the real audio coming *out* of it. Both play briefly at once, so the sound never drops — and over a long segment, where those two moments are pulled from genuinely different points in the music, they blend into a natural swell rather than a hard cut. The rebuilt track is then tempo-locked to the finished video so picture and sound can't drift. (Turn it off with `--no-bridge-sound`.)
 
 Detection normalizes any 16:9 resolution to 1080p internally, so the bundled templates work at 1080p / 1440p / 4K. Rendering happens at your source's native resolution.
 
