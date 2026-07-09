@@ -22,7 +22,7 @@ In Rebirth, opening the Tactical Mode command menu drops the game into heavy slo
 
 1. **Detect** — a computer-vision pass (OpenCV) scans every frame and recognizes Tactical Mode two ways: the on-screen **L2/R2 button prompts** at their fixed positions, and the **"Tactical Mode" header text** above the command menu. Both are made robust to bright/gray/busy backgrounds by combining color + white-mask + black-mask matching, and a **motion check** confirms the scene is actually in slow-motion (so a stray match during fast action can't trigger a false speed-up). The header-text signal means **solo boss fights work too**: those have no party, so the L2/R2 *allies* prompt never appears — but the menu header still does.
 2. **Render** — FFmpeg re-times each detected segment (`setpts` for video, `atempo` for audio, kept exactly in sync), speeding up the slow-motion while normal-speed combat passes through untouched, then stitches it all back together.
-3. **Bridge the audio** — speeding a Tactical segment up ~100× would turn its audio into a sub-frame blip, so the sound would cut out and jump straight from before the menu to after it. Instead, each seam is filled with an **equal-power crossfade** between the real audio going *into* the slow-motion and the real audio coming *out* of it. Both play briefly at once, so the sound never drops — and over a long segment, where those two moments are pulled from genuinely different points in the music, they blend into a natural swell rather than a hard cut. The rebuilt track is then tempo-locked to the finished video so picture and sound can't drift. (Turn it off with `--no-bridge-sound`.)
+3. **Bridge the audio** — speeding a Tactical segment up ~100× would turn its audio into a sub-frame blip, so the sound would cut out and jump straight from before the menu to after it. Instead, each seam is filled with an **equal-power crossfade** between the real audio going *into* the slow-motion and the real audio coming *out* of it. Both play briefly at once, so the sound never drops — and over a long segment, where those two moments are pulled from genuinely different points in the music, they blend into a natural swell rather than a hard cut. The rebuilt track is then tempo-locked to the finished video so picture and sound can't drift. (Turn it off with `--no-bridge-sound`.) → [**How does the sound stay seamless?**](#appendix-how-does-the-sound-stay-seamless) breaks the crossfade down step by step.
 
 Detection normalizes any 16:9 resolution to 1080p internally, so the bundled templates work at 1080p / 1440p / 4K. Rendering happens at your source's native resolution.
 
@@ -131,3 +131,44 @@ ffvii-realtime is **dual-licensed** (see [LICENSING.md](LICENSING.md)):
   copyleft obligations — contact Rob Esris (open an issue on this repo).
 
 Copyright © 2026 Rob Esris.
+
+---
+
+## Appendix: How does the sound stay seamless?
+
+Speeding a Tactical segment up ~100× turns its own audio into a sub-frame blip, so the naive result is the sound cutting out and jumping from the audio *before* the menu to the audio *after* it. Bridging replaces each of those seams with a short crossfade of the **real** audio so the track never drops. It's the least intuitive part of the project, so here's the full picture. (Code: [`build_bridged_track` in `bridge.py`](https://github.com/robesris/ffvii-realtime/blob/393d63d8d19353f2231eec3f509153e3b6d84eb4/ffvii_realtime/bridge.py#L24-L101).)
+
+**The track is rebuilt in two passes.** First, every real-time (1×) segment is copied from the source verbatim. Then each sped-up seam — a run of Tactical Mode compressed to a sliver — is filled in with a crossfade.
+
+**The crossfade straddles the seam; it isn't *at* it.** This is the key surprise. Call the crossfade half-width `fade_half` (≈0.35 s by default) and the compressed sliver `sped_up_len` (tiny — a 4 s Tactical run ÷100 ≈ 0.04 s). The crossfade region is `fade_len = 2·fade_half + sped_up_len` wide and is written **centered on the seam**: it starts ~0.35 s *before* the seam (overwriting the tail of the preceding real-time audio) and ends ~0.35 s *after* it (lapping into the following real-time audio).
+
+Two excerpts of the real source audio are blended across that region:
+
+- **`entering`** — the audio around the moment the slow-mo *began* (entering the menu)
+- **`leaving`** — the audio around the moment the slow-mo *ended* (leaving it)
+
+mixed as `entering·cos(½π·ramp) + leaving·sin(½π·ramp)`, with `ramp` sweeping 0→1. That's an **equal-power** crossfade: `cos² + sin² = 1`, so perceived loudness stays constant — no dip in the middle.
+
+```
+output →   …prev real-time audio │ sliver │ next real-time audio…
+                                  ▲seam
+ crossfade  [═══════════════════════════════════════════]   ← fade_len ≈ 0.74 s
+            seam−0.35s                              seam+0.39s
+ ramp:      0 ───────────────── ~0.5 (at seam) ───────────── 1
+ you hear:  entering ──► (entering + leaving together) ──► leaving
+```
+
+**Moment by moment:**
+
+- **~0.35 s before the seam** (`ramp = 0`): pure `entering`, and it's the *same samples* already sitting there, so the crossfade begins as a perfect copy of itself — no click, nothing audible yet.
+- **Approaching the seam:** `leaving` (the audio from where the slow-mo ends) fades in on top. So the "after" audio starts **before** the on-screen speed-up does — a little sound is deliberately edited *ahead* of the visual seam.
+- **At the seam** (`ramp ≈ 0.5`, because `sped_up_len` is tiny): roughly half-and-half — the music entering the slow-mo and the music leaving it, playing at once.
+- **~0.35 s after the seam** (`ramp = 1`): pure `leaving`, again matching the untouched audio there.
+
+Because **both edges equal the real audio they overwrite**, the splice itself is silent — the only thing you consciously hear is the ~0.7 s swell in the middle where the two moments overlap.
+
+**Why long segments sound richer than short blips.** The crossfade is always ~0.7 s, but `entering` and `leaving` are pulled from source positions separated by the slow-mo's *real* elapsed duration. For a short blip they're nearly the same instant → a seamless continuation. For a long Tactical segment they're genuinely different points in the battle track — different notes and harmony — so overlapping them produces beating/phasing that reads as a tremolo. (FF7's battle music already has tremolo strings, which compounds it.) It's two real recordings interfering, not a synthesized effect, which is why it sounds musical.
+
+**It never eats too much.** `fade_half` is clamped to at most half of the shorter neighbouring real-time segment, so when two Tactical runs are close together the crossfade shrinks to fit and never chews through more than half the real audio on either side.
+
+**Staying locked to the picture.** The rebuilt track is then tempo-nudged (a pitch-preserving `atempo`, ~0.07%) to match the finished video's exact duration — audio (whole samples at 44.1 kHz) and video (whole frames) quantize on different grids and would otherwise drift apart over a long clip.
