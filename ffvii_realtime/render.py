@@ -18,6 +18,31 @@ import tempfile
 from .ffmpeg_util import ffmpeg, probe, run_cancellable, Cancelled
 
 
+# containers that accept the rendered H.264/AAC streams via a plain -c copy remux.
+# notably NOT WebM (VP8/VP9/AV1 + Vorbis/Opus only) - a common slip since captures
+# are often .webm.
+COPY_CONTAINERS = (".mp4", ".m4v", ".mov", ".mkv", ".avi", ".ts")
+
+
+def normalize_output(out):
+    """Return a usable output path or raise ValueError with an actionable message.
+
+    A bare name with no extension gets `.mp4` (FFmpeg can't pick a muxer otherwise);
+    an extension that can't hold H.264/AAC via copy (e.g. .webm) is rejected up front,
+    before the render, instead of failing cryptically on the final concat."""
+    ext = os.path.splitext(out)[1].lower()
+    if not ext:
+        return out + ".mp4"
+    if ext not in COPY_CONTAINERS:
+        raise ValueError(
+            "output extension '%s' can't hold the rendered H.264/AAC video"
+            "%s. Use one of: %s"
+            % (ext,
+               " (WebM only takes VP8/VP9/AV1 + Vorbis/Opus)" if ext == ".webm" else "",
+               ", ".join(COPY_CONTAINERS)))
+    return out
+
+
 def atempo_chain(factor):
     """Decompose a tempo factor into atempo filters each in [0.5, 2.0]."""
     parts, x = [], float(factor)

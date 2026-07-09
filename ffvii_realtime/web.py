@@ -12,7 +12,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
 from .detect import detect, LEAD
-from .render import render
+from .render import render, normalize_output
 from .ffmpeg_util import probe, Cancelled
 
 try:
@@ -233,7 +233,10 @@ class Handler(BaseHTTPRequestHandler):
             with _LOCK:
                 if STATE["running"]:
                     self._send(409, json.dumps({"error": "already running"})); return
-            out = req.get("out") or os.path.splitext(path)[0] + ".realtime.mp4"
+            try:
+                out = normalize_output(req.get("out") or os.path.splitext(path)[0] + ".realtime.mp4")
+            except ValueError as e:
+                self._send(400, json.dumps({"error": str(e)})); return
             if os.path.exists(out) and not req.get("overwrite"):
                 self._send(409, json.dumps({"error": "output exists", "out": out})); return
             try:

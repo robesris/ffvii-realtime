@@ -12,7 +12,7 @@ import os
 import sys
 
 from .detect import detect, LEAD, THRESH, SLOW_CAP, NR2, MERGE_GAP, MIN_DUR
-from .render import render
+from .render import render, normalize_output
 
 
 def parse_volume(s):
@@ -136,6 +136,16 @@ def _abort_if_empty(res):
         raise SystemExit(3)
 
 
+def _resolve_out(user_out, default):
+    """Normalize the output path (add .mp4 if bare; reject containers that can't hold
+    H.264/AAC), exiting with a clear message rather than a late FFmpeg failure."""
+    try:
+        return normalize_output(user_out or default)
+    except ValueError as e:
+        sys.stderr.write("Error: %s\n" % e)
+        raise SystemExit(2)
+
+
 def _guard_out(out, force):
     """Refuse to clobber an existing output unless --force was given."""
     if os.path.exists(out) and not force:
@@ -225,7 +235,7 @@ def main(argv=None):
         _run_detect(args)
 
     elif args.cmd == "fix":
-        out = args.out or os.path.splitext(args.input)[0] + ".realtime.mp4"
+        out = _resolve_out(args.out, os.path.splitext(args.input)[0] + ".realtime.mp4")
         _guard_out(out, args.force)
         res, ipath = _run_detect(args)
         _abort_if_empty(res)
@@ -238,7 +248,7 @@ def main(argv=None):
         print(f"Done -> {out}")
 
     elif args.cmd == "render":
-        out = args.out or os.path.splitext(args.input)[0] + ".realtime.mp4"
+        out = _resolve_out(args.out, os.path.splitext(args.input)[0] + ".realtime.mp4")
         _guard_out(out, args.force)
         data = json.load(open(args.intervals))
         ivs = data["intervals"] if isinstance(data, dict) else data
@@ -249,7 +259,7 @@ def main(argv=None):
         print(f"Done -> {out}")
 
     elif args.cmd == "preview":
-        out = args.out or os.path.splitext(args.input)[0] + ".preview.mp4"
+        out = _resolve_out(args.out, os.path.splitext(args.input)[0] + ".preview.mp4")
         _guard_out(out, args.force)
         # detect only the window (fast), then render it; interval times are absolute
         res, _ = _run_detect(args)
