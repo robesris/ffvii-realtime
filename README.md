@@ -28,7 +28,7 @@ Detection normalizes any 16:9 resolution to 1080p internally, so the bundled tem
 
 ---
 
-## Install
+## Install & Quick Start
 
 **One line, everything bundled:**
 
