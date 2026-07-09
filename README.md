@@ -45,6 +45,8 @@ That's the whole setup: **FFmpeg ships with it** — nothing else to install. Dr
 video into the app (or click **Browse…**, or paste its full path), set the speed-up
 factor, click **Start** — the finished file is saved next to the original.
 
+> **This can take a while, even for short videos.** Detection scans the whole file and then the video is re-encoded, so give it time and watch the progress bar — it isn't stuck. (Longer captures scale up from there.)
+
 Requires **Python 3.8+**. No `pipx`? [Install it](https://pipx.pypa.io/stable/how-to/install-pipx/),
 or just use `pip install ffvii-realtime` (pipx only adds isolation). On Windows, check
 *"Add python.exe to PATH"* when installing Python.
