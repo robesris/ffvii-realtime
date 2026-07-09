@@ -8,7 +8,7 @@
 
 ![FFVII Realtime demo: Tactical Mode slow-motion sped up to real time](https://raw.githubusercontent.com/robesris/ffvii-realtime/main/assets/demo.gif)
 
-*A fight with Tactical Mode slow-motion removed, playing at uniform real-time speed. Each quick flash is a spot where the game had slowed to a crawl for the command menu — at the default 100× factor those stretches collapse away while the real-time action plays untouched. ([full clip, higher-quality MP4](https://github.com/robesris/ffvii-realtime/raw/main/assets/demo.mp4))*
+*A fight with Tactical Mode slow-motion removed, playing at uniform real-time speed. Each quick flash is a spot where the game had slowed to a crawl for the command menu — at the default 100× factor those stretches collapse away while the real-time action plays untouched.*
 
 **Watch the full example on YouTube:** [before](https://www.youtube.com/watch?v=1BBoaOTGx-4) — the fight as captured, with Tactical Mode slow-motion · [after](https://www.youtube.com/watch?v=CQG_V0so8FU) — the same fight sped up to real time.
 
