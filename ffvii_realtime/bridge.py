@@ -28,48 +28,76 @@ def build_bridged_track(src, sr, segs, factor, m_max=0.35, src_t0=0.0):
     src       : int16 [N, 2] source samples
     src_t0    : source time (seconds) of src[0] (for windowed extraction)
     """
-    out_len, src_a, src_b, is_tac = [], [], [], []
-    for a, b, t in segs:
-        out_len.append(round((b - a) / factor * sr) if t else round((b - a) * sr))
-        src_a.append(round((a - src_t0) * sr)); src_b.append(round((b - src_t0) * sr))
-        is_tac.append(t)
-    out_off = np.cumsum([0] + out_len)
-    out = np.zeros((int(out_off[-1]), 2), dtype=np.float64)
-    N = len(src)
+    # per segment, gather: its length on the OUTPUT timeline (Tactical shrinks by
+    # `factor`, real-time stays 1:1), and its start/end as SOURCE sample indices.
+    output_lengths, source_starts, source_ends, is_tactical = [], [], [], []
+    for start, end, tactical in segs:
+        output_lengths.append(round((end - start) / factor * sr) if tactical
+                              else round((end - start) * sr))
+        source_starts.append(round((start - src_t0) * sr))
+        source_ends.append(round((end - src_t0) * sr))
+        is_tactical.append(tactical)
+    output_offsets = np.cumsum([0] + output_lengths)   # where each segment starts in the track
+    track = np.zeros((int(output_offsets[-1]), 2), dtype=np.float64)
+    n_src = len(src)
 
-    def grab(s0, n):                                    # source[s0:s0+n], zero-padded
-        buf = np.zeros((n, 2), dtype=np.float64)
-        a, b = max(0, s0), min(N, s0 + n)
-        if b > a:
-            buf[a - s0:b - s0] = src[a:b]
+    def grab(at, count):                                # source[at:at+count], zero-padded
+        buf = np.zeros((count, 2), dtype=np.float64)
+        lo, hi = max(0, at), min(n_src, at + count)
+        if hi > lo:
+            buf[lo - at:hi - at] = src[lo:hi]
         return buf
 
-    for i, t in enumerate(is_tac):                      # 1) real-time segments 1:1
-        if not t:
-            o0 = int(out_off[i]); out[o0:o0 + out_len[i]] = grab(src_a[i], out_len[i])
+    for i, tactical in enumerate(is_tactical):          # 1) real-time segments copied 1:1
+        if not tactical:
+            at = int(output_offsets[i])
+            track[at:at + output_lengths[i]] = grab(source_starts[i], output_lengths[i])
 
-    mmax_s = int(round(m_max * sr))                     # 2) bridge each tactical run
+    max_half = int(round(m_max * sr))                   # 2) bridge each tactical run
     i = 0
     while i < len(segs):
-        if not is_tac[i]:
+        if not is_tactical[i]:
             i += 1; continue
-        j = i
-        while j < len(segs) and is_tac[j]:
-            j += 1
-        p, nx = i - 1, j
-        if p >= 0 and nx < len(segs):
-            seam = int(out_off[i]); g_s = int(out_off[j] - out_off[i])
-            m_s = min(mmax_s, out_len[p] // 2, out_len[nx] // 2)
-            if m_s >= 2:
-                L = 2 * m_s + g_s
-                pre = grab(src_b[p] - m_s, L)
-                post = grab(src_a[nx] + m_s - L, L)
-                w = np.linspace(0.0, 1.0, L)[:, None]
-                out[seam - m_s:seam - m_s + L] = pre * np.cos(0.5 * np.pi * w) + \
-                                                 post * np.sin(0.5 * np.pi * w)
-        i = j
+        # collapse a whole contiguous run of Tactical segments [i, run_end) to one seam,
+        # with `prev`/`nxt` the real-time segments immediately before and after it.
+        run_end = i
+        while run_end < len(segs) and is_tactical[run_end]:
+            run_end += 1
+        prev, nxt = i - 1, run_end
+        if prev >= 0 and nxt < len(segs):               # skip a run at the very start/end
+            # seam: where the run sits on the OUTPUT timeline (samples).
+            # sped_up_len: the run's length AFTER speed-up - a sub-frame sliver (4s / 100x ~= 0.04s).
+            seam = int(output_offsets[i])
+            sped_up_len = int(output_offsets[run_end] - output_offsets[i])
+            # crossfade half-width, clamped so it never eats more than half of either
+            # neighbour (two Tactical runs close together share little real-time audio).
+            fade_half = min(max_half, output_lengths[prev] // 2, output_lengths[nxt] // 2)
+            if fade_half >= 2:
+                # the crossfade STRADDLES the seam: it starts `fade_half` before it (over the
+                # tail of the previous real-time audio), spans the sliver, and laps `fade_half`
+                # into the next real-time audio. total width `fade_len`.
+                fade_len = 2 * fade_half + sped_up_len
+                # `entering`: source audio around where the slow-mo BEGAN. reads from
+                # `fade_half` before that point forward, so entering[0] equals the real-time
+                # audio already at the crossfade's left edge (-> that edge is a seamless copy).
+                entering = grab(source_ends[prev] - fade_half, fade_len)
+                # `leaving`: source audio around where the slow-mo ENDED, offset so its LAST
+                # sample lands `fade_half` past the sliver, matching the real-time audio
+                # already at the right edge (-> that edge is seamless too).
+                leaving = grab(source_starts[nxt] + fade_half - fade_len, fade_len)
+                # equal-power crossfade: cos^2 + sin^2 = 1, so loudness stays flat (no dip).
+                # `ramp` sweeps 0->1 over `fade_len`, so it's pure `entering` at the left edge
+                # and pure `leaving` at the right; because the sliver is tiny the seam itself
+                # falls near ramp=0.5, i.e. a ~50/50 blend of the audio entering vs. leaving
+                # the slow-mo. both edges match the audio they overwrite, so only the
+                # ~2*fade_half swell in the middle is audible - and the further apart the two
+                # excerpts are in the source (a long run), the more they differ and beat.
+                ramp = np.linspace(0.0, 1.0, fade_len)[:, None]
+                track[seam - fade_half:seam - fade_half + fade_len] = \
+                    entering * np.cos(0.5 * np.pi * ramp) + leaving * np.sin(0.5 * np.pi * ramp)
+        i = run_end
 
-    return np.clip(np.round(out), -32768, 32767).astype(np.int16)
+    return np.clip(np.round(track), -32768, 32767).astype(np.int16)
 
 
 def _write_wav(path, samples, sr):
