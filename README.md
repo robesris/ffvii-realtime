@@ -8,7 +8,7 @@
 
 <img src="https://raw.githubusercontent.com/robesris/ffvii-realtime/main/assets/demo.gif" width="720" alt="FFVII Realtime demo: Tactical Mode slow-motion sped up to real time">
 
-*Cloud mid-fight in Rebirth with the Tactical Mode slow-motion removed — the whole clip runs at uniform real-time speed. The command-menu moments that would normally crawl in slow-motion flash past instead; only the artificial slow-down is compressed, and the real-time combat plays untouched.*
+*Cloud mid-fight in Rebirth, with the Tactical Mode slow-motion removed so the whole clip runs at uniform real-time speed. Even the long command-menu pauses compress to just a second or two when sped up ~100×, blending seamlessly into the real-time combat — no jarring cut where the speed changes.*
 
 ![The FFVII Realtime app](https://raw.githubusercontent.com/robesris/ffvii-realtime/main/assets/gui.png)
 
